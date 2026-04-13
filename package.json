@@ -1,6 +1,6 @@
 {
   "name": "velkoramc",
-  "version": "3.8.1",
+  "version": "3.9.2",
     "description": "Launcher Minecraft",
   "main": "src/main/index.js",
   "scripts": {
