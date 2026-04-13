@@ -6,15 +6,15 @@
 const LauncherVersion = {
   // Informations principales
   name: 'VelkoraMC',
-  version: '3.8.1',
+  version: '3.9.2',
   versionName: '',
-  build: '20260226',
-  releaseDate: '2026-02-26',
+  build: '20260413',
+  releaseDate: '2026-04-13',
   channel: 'stable', // stable, beta, dev
   
   // Informations du développeur
   author: 'Pharos_Off',
-  website: 'https://github.com/pharos-off/miVelkoraMC',
+  website: 'https://github.com/pharos-off/VelkoraMC',
   discordServer: 'https://discord.gg/VelkoraMC',
   
   // Méthodes utilitaires

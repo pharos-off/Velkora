@@ -9,7 +9,7 @@ class MicrosoftAuth {
     this.clientId = '00000000-0000-0000-0000-0000402b5328';
     this.redirectUri = 'https://login.live.com/oauth20_desktop.srf';
     this.store = new Store();
-    this.tokenCache = null;
+    this.tokenCache = this.store.get('authData', null);
     this.authInProgress = false;
     this.authWindow = null;
     this.authPromise = null;
@@ -371,10 +371,15 @@ class MicrosoftAuth {
       return null;
     }
 
-    // Si le token expire dans moins de 5 minutes
-    if (authData.expiresAt && Date.now() > (authData.expiresAt - 5 * 60 * 1000)) {
-      console.log('⏰ Token expiration approaching, refreshing...');
-      return await this.refreshAccessToken();
+    // Si le tokend expire ou ne contient pas de valeur, on refresh
+    if (!authData.accessToken || (authData.expiresAt && Date.now() > (authData.expiresAt - 5 * 60 * 1000))) {
+      console.log('⏰ Token expiration approaching / token manquant, refreshing...');
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) {
+        this.tokenCache = this.store.get('authData');
+        return refreshed;
+      }
+      return null;
     }
 
     return authData.accessToken;

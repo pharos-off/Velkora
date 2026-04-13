@@ -228,11 +228,11 @@ class CraftLauncherApp {
       }
       else if (e.target.classList.contains('bug-report-btn')) {
         // Ouvrir le lien GitHub pour créer un rapport
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/miVelkoraMC/issues/new');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/VelkoraMC/issues/new');
       }
       else if (e.target.classList.contains('pr-request-btn')) {
         // Ouvrir le lien GitHub pour les pull requests
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/miVelkoraMC/pulls');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/VelkoraMC/pulls');
       }
     });
 
@@ -1156,11 +1156,14 @@ renderMainLayout() {
         <div class="main-launch-card">
           <div class="launch-card-header">
             <div class="version-info">
-              <span class="version-badge" id="version-badge-display">Minecraft ${this.selectedProfile?.version || '1.21.4'}</span>
+              <span class="version-badge" id="version-badge-display">Minecraft ${this.selectedProfile?.version || '26.1.2'}</span>
               <span class="ram-badge" id="ram-badge-display">${this.settings.ramAllocation || 4} GB RAM</span>
             </div>
             
             <select id="version-select" class="version-selector">
+              <option value="26.1.2" ${this.selectedProfile?.version === '26.1.2' ? 'selected' : ''}>26.1.2</option>
+              <option value="26.1.1" ${this.selectedProfile?.version === '26.1.1' ? 'selected' : ''}>26.1.1</option>
+              <option value="26.1" ${this.selectedProfile?.version === '26.1' ? 'selected' : ''}>26.1</option>
               <option value="1.21.11" ${this.selectedProfile?.version === '1.21.11' ? 'selected' : ''}>1.21.11</option>
               <option value="1.21.10" ${this.selectedProfile?.version === '1.21.10' ? 'selected' : ''}>1.21.10</option>
               <option value="1.21.9" ${this.selectedProfile?.version === '1.21.9' ? 'selected' : ''}>1.21.9</option>
@@ -1922,6 +1925,9 @@ renderMainLayout() {
   renderVersionsView() {
     // Liste des versions Minecraft populaires
     const versions = [
+      { version: '26.1.2', release: '2026', type: 'stable' },
+      { version: '26.1.1', release: '2026', type: 'stable' },
+      { version: '26.1', release: '2026', type: 'stable' },
       { version: '1.21.11', release: '2025', type: 'stable' },
       { version: '1.21.10', release: '2025', type: 'unsupported' },
       { version: '1.21.9', release: '2025', type: 'unsupported' },

@@ -46,12 +46,18 @@ async function loadSettings() {
       if (gameDirInput) gameDirInput.value = settings.gameDirectory || '';
       if (discordToggle) discordToggle.checked = settings.discordRPC || false;
       if (fullscreenToggle) fullscreenToggle.checked = settings.fullscreen || false;
+      const showLogsToggle = document.getElementById('show-logs-toggle');
+      if (showLogsToggle) showLogsToggle.checked = settings.showLogsWindow !== undefined ? settings.showLogsWindow : true;
+      const javaPathInput = document.getElementById('java-path-input');
+      if (javaPathInput) javaPathInput.value = settings.javaPath || '';
+      const versionSelect = document.getElementById('settings-version-select');
+      if (versionSelect) versionSelect.value = settings.version || versionSelect.value;
       if (startupToggle) startupToggle.checked = settings.startupOnBoot !== undefined ? settings.startupOnBoot : !!startupEnabled;
       if (ramSlider) {
         ramSlider.max = systemRam;
         ramSlider.value = Math.min(settings.ramAllocation || 4, systemRam);
         if (ramValue) ramValue.textContent = `${ramSlider.value} GB`;
-        if (ramHelpText) ramHelpText.textContent = `Allocate between 1 and ${systemRam} GB of RAM for Minecraft`;
+        if (ramHelpText) ramHelpText.textContent = `Allocate between 1 and ${systemRam} GB for Minecraft`;
       }
     }, 100);
   } catch (error) {
@@ -635,6 +641,9 @@ function renderSettings() {
             <div class="setting-item">
               <label>Version utilisée (profil principal)</label>
               <select id="settings-version-select" class="input-field">
+                <option value="26.1.2">26.1.2</option>
+                <option value="26.1.1">26.1.1</option>
+                <option value="26.1">26.1</option>
                 <option value="1.21.11">1.21.11</option>
                 <option value="1.21.10">1.21.10</option>
                 <option value="1.21.9">1.21.9</option>
@@ -676,8 +685,17 @@ function renderSettings() {
           <div class="settings-card">
             <h3>Java (optionnel)</h3>
             <div class="setting-item">
+              <label>Version Java requise pour cette version MC:</label>
+              <p id="java-required-version" style="color: #10b981; padding: 10px 0; font-weight: 600; font-size: 14px;">Java 21</p>
+              <p class="help-text">Change automatiquement selon la version Minecraft sélectionnée</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
               <label>Chemin vers javaw.exe</label>
-              <input type="text" id="java-path-input" class="input-field" placeholder="exemple: C:\\Program Files\\Java\\bin\\javaw.exe">
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="java-path-input" class="input-field" placeholder="exemple: C:\\Program Files\\Java\\jdk-25.0.1\\bin\\javaw.exe" style="flex: 1;">
+                <button id="detect-java-btn" class="dir-browse-btn" style="min-width: 100px;">🔍 Détecter</button>
+              </div>
+              <p id="java-detected-path" class="help-text" style="margin-top: 8px; color: #cbd5e1;">Cliquez sur &quot;Détecter&quot; pour chercher Java automatiquement</p>
               <p class="help-text">Laisse vide pour utiliser la configuration par défaut</p>
             </div>
           </div>
@@ -1545,6 +1563,66 @@ function renderSettings() {
       } finally {
         saveGameBtn.disabled = false;
         saveGameBtn.textContent = 'Valider et sauvegarder';
+      }
+    });
+  }
+
+  // ✅ UPDATE REQUIRED JAVA VERSION WHEN MC VERSION CHANGES
+  const versionSelect = document.getElementById('settings-version-select');
+  const requiredJavaEl = document.getElementById('java-required-version');
+  
+  const updateRequiredJava = async () => {
+    const mcVersion = versionSelect?.value || '1.21.11';
+    try {
+      const result = await ipcRenderer.invoke('get-required-java-version', mcVersion);
+      if (requiredJavaEl) {
+        requiredJavaEl.textContent = `Java ${result.requiredVersion}+`;
+        requiredJavaEl.style.color = result.requiredVersion >= 25 ? '#f59e0b' : '#10b981';
+      }
+    } catch (error) {
+      console.error('Erreur get-required-java-version:', error);
+    }
+  };
+  
+  if (versionSelect) {
+    versionSelect.addEventListener('change', updateRequiredJava);
+    updateRequiredJava();
+  }
+
+  // ✅ DETECT JAVA BUTTON
+  const detectJavaBtn = document.getElementById('detect-java-btn');
+  if (detectJavaBtn) {
+    detectJavaBtn.addEventListener('click', async () => {
+      const mcVersion = versionSelect?.value || '1.21.11';
+      const detectBtn = detectJavaBtn;
+      detectBtn.disabled = true;
+      const originalText = detectBtn.textContent;
+      detectBtn.textContent = '🔍 Recherche...';
+      
+      try {
+        const requiredResult = await ipcRenderer.invoke('get-required-java-version', mcVersion);
+        const javaVersion = requiredResult.requiredVersion;
+        
+        const detectResult = await ipcRenderer.invoke('get-detected-java-path', javaVersion);
+        
+        const detectedPathEl = document.getElementById('java-detected-path');
+        const javaPathInput = document.getElementById('java-path-input');
+        
+        if (detectResult.found && detectResult.path) {
+          javaPathInput.value = detectResult.path;
+          detectedPathEl.textContent = `✓ Java ${javaVersion} trouvé: ${detectResult.path}`;
+          detectedPathEl.style.color = '#10b981';
+        } else {
+          detectedPathEl.textContent = `✗ Java ${javaVersion} non trouvé dans C:\\Program Files\\Java\\`;
+          detectedPathEl.style.color = '#ef4444';
+        }
+      } catch (error) {
+        console.error('Erreur detect-java:', error);
+        document.getElementById('java-detected-path').textContent = `✗ Erreur: ${error.message}`;
+        document.getElementById('java-detected-path').style.color = '#ef4444';
+      } finally {
+        detectBtn.disabled = false;
+        detectBtn.textContent = originalText;
       }
     });
   }

@@ -16,8 +16,8 @@ const fs = require('fs');
 const os = require('os');
 
 
-const LAUNCHER_VERSION = '3.1.57';
-const LAUNCHER_BUILD = '20250214';
+const LAUNCHER_VERSION = '3.9.2';
+const LAUNCHER_BUILD = '20260413';
 const LAUNCHER_NAME = 'CraftLauncher';
 const __emojiMap = {
   '✅': '[OK]',
@@ -95,6 +95,7 @@ let mainWindow;
 let settingsWindow = null;
 let logsWindow = null;
 let discordRPC = null;
+let launcher = null;
 let _discordCleaned = false;
 let minecraftRunning = false;
 let lastLaunchAttempt = 0;
@@ -1029,6 +1030,25 @@ ipcMain.handle('get-available-ram', async () => {
 // Authentification Microsoft
 ipcMain.handle('login-microsoft', async () => {
   try {
+    const savedAuth = store.get('authData', null);
+    if (savedAuth && savedAuth.type === 'microsoft') {
+      if (!_msAuthInstance) {
+        _msAuthInstance = new MicrosoftAuth();
+      }
+      _msAuthInstance.tokenCache = savedAuth;
+
+      // Si le token est valide, on évite de re-authentifier
+      const currentToken = await _msAuthInstance.ensureValidToken();
+      if (currentToken) {
+        const existing = store.get('authData');
+        if (existing) {
+          existing.accessToken = currentToken;
+          store.set('authData', existing);
+        }
+        return { success: true, data: store.get('authData') };
+      }
+    }
+
     if (!_msAuthInstance) {
       _msAuthInstance = new MicrosoftAuth();
     }
@@ -1467,7 +1487,7 @@ ipcMain.handle('get-profiles', async () => {
   const defaultProfile = {
     id: 1,
     name: 'Principal',
-    version: '1.21.4',
+    version: '26.1.2',
     lastPlayed: new Date().toISOString().split('T')[0],
     createdAt: new Date().toISOString()
   };
@@ -1481,7 +1501,7 @@ ipcMain.handle('get-profile', async (event, profileId) => {
     {
       id: 1,
       name: 'Principal',
-      version: '1.21.4',
+      version: '26.1.2',
       lastPlayed: new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString()
     }
@@ -1505,7 +1525,7 @@ ipcMain.handle('create-profile', async (event, profileData) => {
   const newProfile = {
     id: newId,
     name: profileData.name || `Profil ${newId}`,
-    version: profileData.version || '1.21.4',
+    version: profileData.version || '26.1.2',
     lastPlayed: null,
     createdAt: new Date().toISOString()
   };
@@ -1578,7 +1598,7 @@ ipcMain.handle('update-profile-version', async (event, version) => {
     {
       id: 1,
       name: 'Principal',
-      version: '1.21.4',
+      version: '26.1.2',
       ram: 4,
       lastPlayed: new Date().toISOString().split('T')[0]
     }
@@ -1649,6 +1669,24 @@ ipcMain.handle('save-settings', async (event, settings) => {
   return { success: true };
 });
 
+// ✅ GET REQUIRED JAVA VERSION FOR MINECRAFT VERSION
+ipcMain.handle('get-required-java-version', async (event, mcVersion) => {
+  if (!launcher) launcher = new MinecraftLauncher();
+  const required = launcher.getRequiredJavaMajor(mcVersion);
+  return { requiredVersion: required, mcVersion };
+});
+
+// ✅ GET DETECTED JAVA PATH FOR SPECIFIC JAVA VERSION
+ipcMain.handle('get-detected-java-path', async (event, javaVersion) => {
+  if (!launcher) launcher = new MinecraftLauncher();
+  try {
+    const javaPath = await launcher.findJavaPath(javaVersion);
+    return { path: javaPath, version: javaVersion, found: !!javaPath };
+  } catch (error) {
+    return { path: null, version: javaVersion, found: false, error: error.message };
+  }
+});
+
 // ✅ HANDLER LANCER MINECRAFT AVEC VÉRIFICATION AUTH
 ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
   try {
@@ -1689,7 +1727,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     }
 
     // ✅ VÉRIFICATION 4: Authentification
-    const authData = store.get('authData', null);
+    let authData = store.get('authData', null);
     if (!authData) {
       console.error('❌ Pas de données d\'authentification');
       return {
@@ -1697,6 +1735,29 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         error: 'Veuillez vous connecter d\'abord'
       };
     }
+
+    // Raffraîchir le token Microsoft si nécessaire
+    if (authData.type === 'microsoft') {
+      if (!_msAuthInstance) {
+        _msAuthInstance = new MicrosoftAuth();
+      }
+      _msAuthInstance.tokenCache = authData;
+      const validToken = await _msAuthInstance.ensureValidToken();
+      if (!validToken) {
+        store.delete('authData');
+        console.error('❌ Token Microsoft invalide, reconnectez-vous');
+        return {
+          success: false,
+          error: 'Session expirée, veuillez vous reconnecter.'
+        };
+      }
+      if (authData.accessToken !== validToken) {
+        authData.accessToken = validToken;
+        store.set('authData', authData);
+      }
+      authData = store.get('authData', authData);
+    }
+
     console.log('✅ Auth:', authData.type, '-', authData.username);
 
     // ✅ VÉRIFICATION 5: Mode offline - version doit exister
@@ -1737,7 +1798,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     }
 
     // ✅ INITIALISER LE LAUNCHER
-    const launcher = new MinecraftLauncher();
+    launcher = new MinecraftLauncher();
     console.log('✅ Launcher initialisé');
 
     try {
@@ -1972,7 +2033,7 @@ ipcMain.handle('select-game-directory', async () => {
 
 // Obtenir les versions
 ipcMain.handle('get-versions', async () => {
-  const launcher = new MinecraftLauncher();
+  if (!launcher) launcher = new MinecraftLauncher();
   return await launcher.getAvailableVersions();
 });
 
@@ -2234,7 +2295,7 @@ async function checkUpdatesAndInstall() {
     const currentVersion = pkg.version;
     
     // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/miVelkoraMC/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/VelkoraMC/releases', {
       headers: { 'User-Agent': 'CraftLauncher' }
     });
     
@@ -2325,7 +2386,7 @@ ipcMain.handle('check-updates', async () => {
     console.log(`[o] Checking for updates (Current: v${currentVersion})...`);
     
     // Récupérer les 5 dernières releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/miVelkoraMC/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/VelkoraMC/releases', {
       headers: { 'User-Agent': '${LAUNCHER_NAME}' }
     });
     

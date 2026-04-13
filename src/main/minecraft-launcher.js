@@ -19,6 +19,13 @@ class MinecraftLauncher {
     const major = parseInt(m[1]);
     const minor = parseInt(m[2]);
 
+    // Minecraft 26+ nécessite Java 25+
+    if (major >= 26) return 25;
+    // Minecraft 25 nécessite Java 25+
+    if (major >= 25) return 25;
+    // Minecraft 21-24 nécessite Java 21+
+    if (major >= 21) return 21;
+
     if (major > 1 || minor >= 20) return 21;
     if (minor >= 18) return 17;
     return 8;
@@ -51,6 +58,9 @@ class MinecraftLauncher {
             const n = ver.match(/^(\d+)(?:\.\d+)?/);
             major = n ? parseInt(n[1], 10) : null;
           }
+
+          // Log de debug pour la version Java détectée
+          console.log(`🔍 Version Java détectée: ${ver} (major: ${major})`);
           resolve(major);
         });
       } catch (_) {
@@ -257,6 +267,43 @@ class MinecraftLauncher {
     return count;
   }
 
+  // ✅ FIND JAVA PATH FOR SPECIFIC JAVA VERSION
+  async findJavaPath(targetJavaVersion) {
+    const javaBaseDir = 'C:\\Program Files\\Java';
+    
+    try {
+      if (fs.existsSync(javaBaseDir)) {
+        const dirs = fs.readdirSync(javaBaseDir);
+        
+        // Parse versions and filter for target
+        const versions = dirs
+          .filter(d => {
+            const match = d.match(/(?:jdk|jre)(?:-)?(\d+)(?:\.(\d+))?/i);
+            return match !== null;
+          })
+          .map(d => {
+            const match = d.match(/(?:jdk|jre)(?:-)?(\d+)(?:\.(\d+))?/i);
+            const major = parseInt(match[1], 10);
+            return { dir: d, major };
+          })
+          .filter(v => v.major === parseInt(targetJavaVersion, 10))
+          .sort((a, b) => b.major - a.major);
+
+        // Find javaw.exe
+        for (const { dir, major } of versions) {
+          const javawPath = path.join(javaBaseDir, dir, 'bin', 'javaw.exe');
+          if (fs.existsSync(javawPath)) {
+            return javawPath;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`⚠️ Erreur lors de la recherche de Java ${targetJavaVersion}: ${e.message}`);
+    }
+
+    return null;
+  }
+
   async launch(options) {
     const {
       authData, version, ram, gameDirectory, javaPath, serverIP,
@@ -289,13 +336,87 @@ class MinecraftLauncher {
         };
       }
     } else {
-      console.log(`✅ Version ${version} already installed\n`);
+      console.log(`✅ Version ${version} already installed`);
+
+      // Vérification supplémentaire de l'intégrité des fichiers
+      const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
+      const versionJarPath = path.join(gameDirectory, 'versions', version, `${version}.jar`);
+
+      if (!fs.existsSync(versionJsonPath) || !fs.existsSync(versionJarPath)) {
+        console.log(`⚠️ Fichiers manquants détectés, retéléchargement nécessaire...`);
+        try {
+          const result = await this.downloadVersion(version, gameDirectory, (progress) => {});
+          if (!result.success) {
+            return {
+              success: false,
+              error: `Fichiers corrompus, retéléchargement échoué: ${result.error}`
+            };
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: `Erreur lors du retéléchargement: ${error.message}`
+          };
+        }
+      }
+
+      console.log('');
     }
+
+    // ✅ Check Java installation avant tout
+    console.log(`🔍 Vérification de Java pour Minecraft ${version}...`);
+    const javaCheck = await this.checkJavaInstallation();
+    console.log(`📊 Java installé: ${javaCheck.installed}, Version: ${javaCheck.version}, Major: ${javaCheck.major}`);
 
     // ✅ Résolution javaw (sans console)
     let resolvedJava = (javaPath && String(javaPath).trim())
       ? String(javaPath).trim()
-      : "javaw";
+      : null;
+
+    // Si aucun chemin Java configuré, rechercher automatiquement Java 25+ pour Minecraft 26
+    if (!resolvedJava) {
+      const javaBaseDir = 'C:\\Program Files\\Java';
+      let foundJava = null;
+
+      try {
+        if (fs.existsSync(javaBaseDir)) {
+          const dirs = fs.readdirSync(javaBaseDir);
+          
+          // Classer les versions par priorité (25 > 24 > 23 > 22 > 21 > ...)
+          const versions = dirs
+            .filter(d => {
+              const match = d.match(/(?:jdk|jre)(?:-)?(\d+)(?:\.(\d+))?/i);
+              return match !== null;
+            })
+            .map(d => {
+              const match = d.match(/(?:jdk|jre)(?:-)?(\d+)(?:\.(\d+))?/i);
+              const major = parseInt(match[1], 10);
+              return { dir: d, major };
+            })
+            .sort((a, b) => b.major - a.major); // Trier décroissant (plus récent d'abord)
+
+          // Chercher le binaire javaw.exe
+          for (const { dir, major } of versions) {
+            const javawPath = path.join(javaBaseDir, dir, 'bin', 'javaw.exe');
+            if (fs.existsSync(javawPath)) {
+              foundJava = javawPath;
+              console.log(`🔍 Java ${major} trouvé: ${javawPath}`);
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`⚠️ Erreur lors de la recherche de Java: ${e.message}`);
+      }
+
+      if (foundJava) {
+        resolvedJava = foundJava;
+      } else {
+        // Si aucun Java trouvé, utiliser javaw en espérant qu'il soit dans le PATH
+        resolvedJava = 'javaw';
+        console.warn(`⚠️ Aucun Java trouvé dans ${javaBaseDir}, utilisation du PATH système`);
+      }
+    }
 
     // si chemin vers java.exe → remplacer par javaw.exe
     resolvedJava = resolvedJava.replace(/java\.exe$/i, "javaw.exe");
@@ -331,7 +452,18 @@ class MinecraftLauncher {
 
     if (onLog) onLog('info', `Java requis: ${requiredMajor}+, Java détecté: ${javaMajor ?? 'inconnu'}`);
     if (javaMajor && javaMajor < requiredMajor) {
-      return { success: false, error: `Java ${requiredMajor}+ requis pour Minecraft ${version}. Java détecté: ${javaMajor}.` };
+      const errorMsg = `❌ Minecraft ${version} nécessite Java ${requiredMajor}+\n\nVersion Java actuelle: ${javaMajor}\n\n⚠️ Pour Minecraft 26.1.2, téléchargez Java 25 depuis:\nhttps://adoptium.net/temurin/releases/?version=25\n\nOu configurez manuellement le chemin Java dans les paramètres du launcher.`;
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    // Vérification supplémentaire pour les versions très récentes
+    const versionParts = String(version).match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+    const versionMajor = versionParts ? parseInt(versionParts[1]) : 0;
+    if (versionMajor >= 26 && javaMajor && javaMajor < 25) {
+      const errorMsg = `❌ Minecraft ${version} nécessite Java 25 ou plus récent.\n\nVersion actuelle: Java ${javaMajor}\n\n📥 Téléchargez Java 25:\nhttps://adoptium.net/temurin/releases/?version=25`;
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     return new Promise((resolve, reject) => {
@@ -438,6 +570,7 @@ class MinecraftLauncher {
       console.log(`   RAM: ${ram}G`);
       console.log(`   Utilisateur: ${authData.username}`);
       console.log(`   Directory: ${gameDirectory}`);
+      console.log(`   Java: ${resolvedJava} (version ${javaMajor})`);
       if (serverIP) console.log(`   Serveur: ${serverIP}`);
       console.log('');
 
@@ -551,6 +684,9 @@ class MinecraftLauncher {
 
     // Fallback: retourner une liste de versions en cache
     return [
+      { id: '26.1.2', name: '26.1.2', type: 'release', releaseTime: '2026-04-08T08:00:00Z' },
+      { id: '26.1.1', name: '26.1.1', type: 'release', releaseTime: '2026-04-01T08:00:00Z' },
+      { id: '26.1', name: '26.1', type: 'release', releaseTime: '2026-03-24T08:00:00Z' },
       { id: '1.21.11', name: '1.21.11', type: 'release', releaseTime: '2025-01-15T08:00:00Z' },
       { id: '1.21.10', name: '1.21.10', type: 'release', releaseTime: '2024-12-17T08:00:00Z' },
       { id: '1.21.9', name: '1.21.9', type: 'release', releaseTime: '2024-11-19T08:00:00Z' },
@@ -619,12 +755,22 @@ class MinecraftLauncher {
     return new Promise((resolve) => {
       exec('javaw -version', (error, stdout, stderr) => {
         if (error) {
-          resolve({ installed: false, version: null });
+          resolve({ installed: false, version: null, major: null });
         } else {
           const versionMatch = stderr.match(/version "(.+?)"/);
+          const version = versionMatch ? versionMatch[1] : 'Unknown';
+          let major = null;
+
+          if (version.startsWith('1.8')) major = 8;
+          else {
+            const n = version.match(/^(\d+)(?:\.\d+)?/);
+            major = n ? parseInt(n[1], 10) : null;
+          }
+
           resolve({
             installed: true,
-            version: versionMatch ? versionMatch[1] : 'Unknown'
+            version: version,
+            major: major
           });
         }
       });
