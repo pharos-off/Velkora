@@ -37,6 +37,93 @@ class MinecraftLauncher {
     );
   }
 
+  inferVersionLoader(versionId, versionJson = {}) {
+    const libraryNames = Array.isArray(versionJson.libraries)
+      ? versionJson.libraries.map(library => library?.name).filter(Boolean)
+      : [];
+    const haystack = [
+      versionId,
+      versionJson.id,
+      versionJson.inheritsFrom,
+      versionJson.mainClass,
+      ...libraryNames
+    ].join(' ').toLowerCase();
+
+    if (haystack.includes('neoforge') || haystack.includes('net.neoforged')) return 'neoforge';
+    if (haystack.includes('quilt-loader') || haystack.includes('org.quiltmc')) return 'quilt';
+    if (haystack.includes('fabric-loader') || haystack.includes('net.fabricmc')) return 'fabric';
+    if (haystack.includes('forgewrapper') || haystack.includes('net.minecraftforge') || /\bforge\b/.test(haystack)) return 'forge';
+    return 'vanilla';
+  }
+
+  extractBaseMinecraftVersion(versionId, versionJson = {}) {
+    const inheritsFrom = String(versionJson?.inheritsFrom || '').trim();
+    if (inheritsFrom) {
+      return inheritsFrom;
+    }
+
+    const candidates = [versionJson?.id, versionId];
+    for (const candidate of candidates) {
+      const match = String(candidate || '').match(/\d+\.\d+(?:\.\d+)?/);
+      if (match) {
+        return match[0];
+      }
+    }
+
+    return null;
+  }
+
+  resolveInstalledLoaderVersion(gameDirectory, minecraftVersion, loader) {
+    const requestedLoader = String(loader || 'vanilla').toLowerCase();
+    if (requestedLoader === 'vanilla') {
+      return null;
+    }
+
+    const versionsDir = path.join(gameDirectory, 'versions');
+    if (!fs.existsSync(versionsDir)) {
+      return null;
+    }
+
+    const candidates = [];
+    for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+
+      const versionId = entry.name;
+      const jsonPath = path.join(versionsDir, versionId, `${versionId}.json`);
+      if (!fs.existsSync(jsonPath)) continue;
+
+      try {
+        const versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+        const detectedLoader = this.inferVersionLoader(versionId, versionJson);
+        if (detectedLoader !== requestedLoader) continue;
+
+        const baseVersion = this.extractBaseMinecraftVersion(versionId, versionJson);
+        const exactMatch = baseVersion === minecraftVersion || String(versionId).includes(String(minecraftVersion));
+        if (!exactMatch) continue;
+
+        const stats = fs.statSync(jsonPath);
+        candidates.push({
+          id: versionId,
+          loader: detectedLoader,
+          baseVersion,
+          jsonPath,
+          mtimeMs: stats.mtimeMs
+        });
+      } catch (error) {
+        console.warn(`⚠️ Impossible de lire la version ${versionId}: ${error.message}`);
+      }
+    }
+
+    candidates.sort((a, b) => {
+      const aExact = a.baseVersion === minecraftVersion ? 1 : 0;
+      const bExact = b.baseVersion === minecraftVersion ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+      return b.mtimeMs - a.mtimeMs;
+    });
+
+    return candidates[0] || null;
+  }
+
   async getJavaMajor(javaPathCandidate) {
     return new Promise((resolve) => {
       try {
@@ -307,7 +394,7 @@ class MinecraftLauncher {
   async launch(options) {
     const {
       authData, version, ram, gameDirectory, javaPath, serverIP,
-      windowWidth, windowHeight, onProgress, onLog, onClose
+      windowWidth, windowHeight, onProgress, onLog, onClose, loader
     } = options;
 
     // ✅ VÉRIFIER ET TÉLÉCHARGER SI NÉCESSAIRE
@@ -466,6 +553,20 @@ class MinecraftLauncher {
       return { success: false, error: errorMsg };
     }
 
+    const requestedLoader = String(loader || 'vanilla').toLowerCase();
+    const customVersion = this.resolveInstalledLoaderVersion(gameDirectory, version, requestedLoader);
+    if (requestedLoader !== 'vanilla' && !customVersion) {
+      const errorMsg = `❌ Le loader ${requestedLoader} est selectionne pour Minecraft ${version}, mais aucune version moddee installee n'a ete trouvee dans le dossier versions.\n\nInstallez d'abord ${requestedLoader} pour cette version, puis relancez le jeu.`;
+      if (onLog) onLog('error', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    if (customVersion) {
+      const loaderLog = `Version moddee detectee: ${customVersion.id} (${customVersion.loader} pour ${customVersion.baseVersion})`;
+      console.log(`🧩 ${loaderLog}`);
+      if (onLog) onLog('info', loaderLog);
+    }
+
     return new Promise((resolve, reject) => {
       let authorization;
 
@@ -492,7 +593,8 @@ class MinecraftLauncher {
         javaPath: resolvedJava,
         version: {
           number: version,
-          type: "release"
+          type: customVersion ? requestedLoader : "release",
+          ...(customVersion ? { custom: customVersion.id } : {})
         },
         memory: {
           max: `${ram}G`,
@@ -567,6 +669,8 @@ class MinecraftLauncher {
 
       console.log(`🎮 Lancement Minecraft...`);
       console.log(`   Version: ${version}`);
+      if (customVersion) console.log(`   Version custom: ${customVersion.id}`);
+      console.log(`   Loader: ${requestedLoader}`);
       console.log(`   RAM: ${ram}G`);
       console.log(`   Utilisateur: ${authData.username}`);
       console.log(`   Directory: ${gameDirectory}`);
@@ -612,7 +716,7 @@ class MinecraftLauncher {
           }
         });
 
-        // Considérer le lancement réussi après 3 secondes (une seule fois)
+        // Considérer le lancement réussi après 1 seconde (une seule fois)
         setTimeout(() => {
           if (!launchResolved) {
             console.log('✅ Minecraft started successfully!');
@@ -620,7 +724,7 @@ class MinecraftLauncher {
             launchResolved = true;
             resolve({ success: true, launched: true });
           }
-        }, 3000);
+        }, 1000);
 
       } catch (error) {
         console.error('❌ Erreur lancement:', error);
@@ -686,7 +790,6 @@ class MinecraftLauncher {
     return [
       { id: '26.1.2', name: '26.1.2', type: 'release', releaseTime: '2026-04-08T08:00:00Z' },
       { id: '26.1.1', name: '26.1.1', type: 'release', releaseTime: '2026-04-01T08:00:00Z' },
-      { id: '26.1', name: '26.1', type: 'release', releaseTime: '2026-03-24T08:00:00Z' },
       { id: '1.21.11', name: '1.21.11', type: 'release', releaseTime: '2025-01-15T08:00:00Z' },
       { id: '1.21.10', name: '1.21.10', type: 'release', releaseTime: '2024-12-17T08:00:00Z' },
       { id: '1.21.9', name: '1.21.9', type: 'release', releaseTime: '2024-11-19T08:00:00Z' },

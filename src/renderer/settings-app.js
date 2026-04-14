@@ -1,8 +1,28 @@
 const { ipcRenderer } = require('electron');
 const LauncherVersion = require('../main/launcher-version.js');
+const UIFeedback = require('./ui-feedback.js');
 
 let originalSettings = {};
 let currentSettings = {};
+const ui = new UIFeedback({ namespace: 'settings-ui' });
+
+function installAlertBridge() {
+  window.alert = (message) => {
+    const normalizedMessage = ui.normalizeMessage(message);
+    const type = ui.inferType(message);
+    const defaultTitle = {
+      success: 'Operation terminee',
+      error: 'Action impossible',
+      info: 'Information'
+    };
+
+    ui.showDialog({
+      title: defaultTitle[type] || defaultTitle.info,
+      message: normalizedMessage,
+      type
+    });
+  };
+}
 
 // ✅ ÉCOUTER LES SIGNAUX DE NAVIGATION
 ipcRenderer.on('navigate-to-tab', (event, tabName) => {
@@ -43,7 +63,10 @@ async function loadSettings() {
       const systemRam = await ipcRenderer.invoke('get-system-ram');
       const startupEnabled = await ipcRenderer.invoke('get-startup-enabled');
       
-      if (gameDirInput) gameDirInput.value = settings.gameDirectory || '';
+      if (gameDirInput) {
+        gameDirInput.value = settings.gameDirectory || '';
+        gameDirInput.placeholder = 'Par défaut: AppData/Roaming/.minecraft';
+      }
       if (discordToggle) discordToggle.checked = settings.discordRPC || false;
       if (fullscreenToggle) fullscreenToggle.checked = settings.fullscreen || false;
       const showLogsToggle = document.getElementById('show-logs-toggle');
@@ -643,7 +666,6 @@ function renderSettings() {
               <select id="settings-version-select" class="input-field">
                 <option value="26.1.2">26.1.2</option>
                 <option value="26.1.1">26.1.1</option>
-                <option value="26.1">26.1</option>
                 <option value="1.21.11">1.21.11</option>
                 <option value="1.21.10">1.21.10</option>
                 <option value="1.21.9">1.21.9</option>
@@ -1088,7 +1110,7 @@ function renderSettings() {
             <ul style="color: #d1d5db; line-height: 2; list-style: none; padding: 0;">
               <li style="display: flex; align-items: center; gap: 10px;">
                 <span style="color: #10b981; font-weight: bold;">✓</span>
-                <span>Authentification Microsoft / Mode hors ligne</span>
+                <span>Authentification Microsoft premium</span>
               </li>
               <li style="display: flex; align-items: center; gap: 10px;">
                 <span style="color: #10b981; font-weight: bold;">✓</span>
@@ -1205,16 +1227,25 @@ function renderSettings() {
   const logoutBtn = document.getElementById('logout-btn');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-      const confirm = window.confirm('Êtes-vous sûr de vouloir vous déconnecter ?');
-      if (confirm) {
+      const confirmed = await ui.showConfirm({
+        title: 'Se deconnecter ?',
+        message: 'La session actuelle sera fermee sur le launcher.',
+        confirmLabel: 'Se deconnecter',
+        cancelLabel: 'Annuler',
+        type: 'error'
+      });
+      if (confirmed) {
         try {
           logoutBtn.disabled = true;
-          const original = logoutBtn.textContent;
           logoutBtn.textContent = 'Déconnexion...';
+          ui.showToast({
+            title: 'Deconnexion en cours',
+            message: 'La session est en train d etre fermee.',
+            type: 'info'
+          });
           await ipcRenderer.invoke('logout-account');
           ipcRenderer.send('close-settings-window');
           ipcRenderer.send('logout-from-settings');
-          alert('✓ Vous êtes déconnecté');
         } catch (error) {
           alert('✗ Erreur lors de la déconnexion');
           logoutBtn.disabled = false;
@@ -1253,8 +1284,14 @@ function renderSettings() {
   const clearCacheBtn = document.getElementById('clear-cache-btn');
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', async () => {
-      const confirm = window.confirm('Etes-vous sur ? Cela supprimera les fichiers temporaires.');
-      if (confirm) {
+      const confirmed = await ui.showConfirm({
+        title: 'Vider le cache ?',
+        message: 'Les fichiers temporaires de Minecraft seront supprimes.',
+        confirmLabel: 'Vider le cache',
+        cancelLabel: 'Annuler',
+        type: 'error'
+      });
+      if (confirmed) {
         const result = await ipcRenderer.invoke('clear-minecraft-cache');
         if (result.success) {
           alert(result.message);
@@ -1318,8 +1355,14 @@ function renderSettings() {
   const resetNotifBtn = document.getElementById('reset-notif-btn');
   if (resetNotifBtn) {
     resetNotifBtn.addEventListener('click', async () => {
-      const confirm = window.confirm('Tous les parametres seront restaures aux valeurs par defaut');
-      if (confirm) {
+      const confirmed = await ui.showConfirm({
+        title: 'Reinitialiser les notifications ?',
+        message: 'Tous les parametres de notifications seront restaures par defaut.',
+        confirmLabel: 'Reinitialiser',
+        cancelLabel: 'Annuler',
+        type: 'error'
+      });
+      if (confirmed) {
         try {
           await ipcRenderer.invoke('reset-notification-settings');
           alert('✓ Notifications reinitialisees !');
@@ -1387,8 +1430,14 @@ function renderSettings() {
   const resetDiscordBtn = document.getElementById('reset-discord-btn');
   if (resetDiscordBtn) {
     resetDiscordBtn.addEventListener('click', async () => {
-      const confirm = window.confirm('Tous les parametres seront restaures aux valeurs par defaut');
-      if (confirm) {
+      const confirmed = await ui.showConfirm({
+        title: 'Reinitialiser Discord ?',
+        message: 'Les parametres Discord reviendront a leur configuration par defaut.',
+        confirmLabel: 'Reinitialiser',
+        cancelLabel: 'Annuler',
+        type: 'error'
+      });
+      if (confirmed) {
         try {
           await ipcRenderer.invoke('reset-discord-settings');
           alert('✓ Parametres Discord reinitialisés !');
@@ -1502,8 +1551,14 @@ function renderSettings() {
   const installUpdateBtn = document.getElementById('install-update-btn');
   if (installUpdateBtn) {
     installUpdateBtn.addEventListener('click', async () => {
-      const confirm = window.confirm('🚀 Installer la mise à jour?\n\nL\'application va redémarrer automatiquement.');
-      if (confirm) {
+      const confirmed = await ui.showConfirm({
+        title: 'Installer la mise a jour ?',
+        message: 'L application va telecharger la nouvelle version puis redemarrer automatiquement.',
+        confirmLabel: 'Installer',
+        cancelLabel: 'Annuler',
+        type: 'info'
+      });
+      if (confirmed) {
         installUpdateBtn.disabled = true;
         const originalText = installUpdateBtn.textContent;
         installUpdateBtn.textContent = '📥 Téléchargement et installation...';
@@ -1638,6 +1693,8 @@ function renderSettings() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  ui.installStyles();
+  installAlertBridge();
   renderSettings();
   await loadSettings();
   await loadAccountInfo();

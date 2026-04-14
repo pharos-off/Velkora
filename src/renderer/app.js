@@ -1,9 +1,18 @@
 const { ipcRenderer } = require('electron');
 const LauncherFeatures = require('./features.js');
 const ModsManager = require('./ModsManager.js');
+const UIFeedback = require('./ui-feedback.js');
 const LauncherVersion = require('../main/launcher-version.js');
 const KeyboardShortcuts = require('../main/keyboard-shortcuts.js');
 //const MusicPlayer = require('./radio-player.js');
+
+// ✅ STUB GLOBAL POUR ÉVITER LES ERREURS DE TIMING
+window.app = {
+  render: () => console.warn('⚠️ app.render called before initialization'),
+  currentView: 'login',
+  showNewsDetail: (id) => console.warn('⚠️ showNewsDetail called before initialization', id),
+  launchGame: (ip) => console.warn('⚠️ launchGame called before initialization', ip)
+};
 
 // Icônes SVG inline
 const icons = {
@@ -55,9 +64,15 @@ class CraftLauncherApp {
     this.listeners = new Map();
     this.playerHead = null;
     this.isLaunching = false; // ✅ Flag pour éviter les doubles lancements
+    this.selectedLaunchLoader = 'vanilla';
     this.viewChangeListener = null; // ✅ Référence du listener pour cleanup
     this.globalMusicPlayer = null; // ✅ Instance globale du lecteur de musique
+    this.ui = new UIFeedback({ namespace: 'main-app-ui' });
+    this.ui.installStyles();
+    this.installUIFeedbackBridge();
     this.modsManager = new ModsManager(this);
+    this.loadingScreenHidden = false;
+    this.deferredDataPromise = null;
     this.shortcuts = new KeyboardShortcuts(this);
   
     // ✅ THÈME PERSONNALISÉ
@@ -83,6 +98,134 @@ class CraftLauncherApp {
       { name: 'Minehut', ip: 'play.minehut.com', description: 'Réseau de serveurs', players: '—' },
     ];
     this.init();
+  }
+
+  installUIFeedbackBridge() {
+    window.alert = (message) => {
+      const normalizedMessage = this.ui.normalizeMessage(message);
+      const type = this.ui.inferType(message);
+      const defaultTitle = {
+        success: 'Operation terminee',
+        error: 'Action impossible',
+        info: 'Information'
+      };
+
+      this.ui.showDialog({
+        title: defaultTitle[type] || defaultTitle.info,
+        message: normalizedMessage,
+        type
+      });
+    };
+  }
+
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  formatLoaderLabel(loader) {
+    const labels = {
+      vanilla: 'Sans loader',
+      fabric: 'Fabric',
+      forge: 'Forge',
+      neoforge: 'NeoForge',
+      quilt: 'Quilt'
+    };
+
+    return labels[String(loader || '').toLowerCase()] || 'Loader';
+  }
+
+  getAvailableLoadersForVersion(version = this.selectedProfile?.version) {
+    const targetVersion = String(version || '').trim();
+    if (!targetVersion) {
+      return [];
+    }
+
+    const uniqueLoaders = new Map();
+    for (const profile of Array.isArray(this.profiles) ? this.profiles : []) {
+      const profileVersion = String(profile?.version || '').trim();
+      const loader = String(profile?.loader || 'vanilla').toLowerCase();
+      if (profileVersion !== targetVersion || loader === 'vanilla') {
+        continue;
+      }
+
+      if (!uniqueLoaders.has(loader)) {
+        uniqueLoaders.set(loader, {
+          loader,
+          label: this.formatLoaderLabel(loader)
+        });
+      }
+    }
+
+    return Array.from(uniqueLoaders.values());
+  }
+
+  getActiveLaunchLoader(version = this.selectedProfile?.version) {
+    const availableLoaders = this.getAvailableLoadersForVersion(version);
+    if (!availableLoaders.some(item => item.loader === this.selectedLaunchLoader)) {
+      this.selectedLaunchLoader = 'vanilla';
+    }
+
+    return this.selectedLaunchLoader;
+  }
+
+  hideLoadingScreen() {
+    if (this.loadingScreenHidden) {
+      return;
+    }
+
+    const loadingScreen = document.getElementById('loading-screen');
+    if (!loadingScreen) {
+      return;
+    }
+
+    setTimeout(() => {
+      this.loadingScreenHidden = true;
+      loadingScreen.classList.add('hidden');
+      setTimeout(() => {
+        if (loadingScreen && loadingScreen.parentElement) {
+          loadingScreen.style.display = 'none';
+        }
+      }, 6000);
+    }, 6000);
+  }
+
+  async loadPlayerHead() {
+    if (!this.authData?.username) {
+      this.playerHead = null;
+      return null;
+    }
+
+    try {
+      this.playerHead = await ipcRenderer.invoke('get-player-head', this.authData.username);
+      return this.playerHead;
+    } catch (error) {
+      console.warn('Impossible de charger la tete du joueur:', error);
+      this.playerHead = null;
+      return null;
+    }
+  }
+
+  async loadDeferredData() {
+    if (this.deferredDataPromise) {
+      return this.deferredDataPromise;
+    }
+
+    this.deferredDataPromise = Promise.all([
+      this.loadPlayerHead(),
+      this.loadNews()
+    ]).finally(() => {
+      this.deferredDataPromise = null;
+      if (this.currentView === 'main' || this.currentView === 'news') {
+        this.renderContentAsync();
+      }
+    });
+
+    return this.deferredDataPromise;
   }
 
 
@@ -112,9 +255,6 @@ class CraftLauncherApp {
   }
 
   async init() {
-    // ✅ AFFICHER LE LOADING SCREEN
-    const loadingScreen = document.getElementById('loading-screen');
-    
     this.features = new LauncherFeatures(this);
     await this.loadData();
     
@@ -135,61 +275,51 @@ class CraftLauncherApp {
       try {
         const result = await ipcRenderer.invoke('check-updates');
         if (result.hasUpdate) {
-          // Afficher une notification discrète
-          const notification = document.createElement('div');
-          notification.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.3); z-index: 5000; font-weight: 600; cursor: pointer; transition: all 0.3s;';
-          notification.innerHTML = `✅ Une mise à jour est disponible (v${result.latestVersion})`;
-          notification.onmouseover = () => notification.style.transform = 'translateY(-4px)';
-          notification.onmouseout = () => notification.style.transform = 'translateY(0)';
-          notification.addEventListener('click', () => {
-            ipcRenderer.send('open-settings', { tab: 'updates' });
-            notification.remove();
+          this.ui.showToast({
+            title: 'Mise a jour disponible',
+            message: `La version v${result.latestVersion} est prete. Ouvre les parametres pour l installer.`,
+            type: 'success',
+            duration: 8000
           });
-          document.body.appendChild(notification);
-          
-          // Auto-remove après 8 secondes
-          setTimeout(() => {
-            if (notification.parentElement) notification.remove();
-          }, 8000);
         }
       } catch (error) {
         console.log('⚠️ Error checking updates:', error);
       }
     }, 2000);
-    
-    // ✅ MASQUER LE LOADING SCREEN APRÈS UN DÉLAI
-    setTimeout(() => {
-      if (loadingScreen) {
-        loadingScreen.classList.add('hidden');
-        // Retirer du DOM après la transition
-        setTimeout(() => {
-          loadingScreen.style.display = 'none';
-        }, 6000);
-      }
-    }, 6000);
+    this.hideLoadingScreen();
     
     setInterval(() => this.updateFriendsStatus(), 30000);
   }
 
   async loadData() {
-    this.authData = await ipcRenderer.invoke('get-auth-data');
-    
-    if (this.authData) {
+    const [
+      authData,
+      profiles,
+      settings,
+      maxRam,
+      friends
+    ] = await Promise.all([
+      ipcRenderer.invoke('get-auth-data'),
+      ipcRenderer.invoke('get-profiles'),
+      ipcRenderer.invoke('get-settings'),
+      ipcRenderer.invoke('get-system-ram'),
+      ipcRenderer.invoke('get-friends')
+    ]);
 
+    this.authData = authData;
+    if (this.authData) {
       this.currentView = 'main';
-      
-      this.playerHead = await ipcRenderer.invoke('get-player-head', this.authData.username);
     }
 
-    this.profiles = await ipcRenderer.invoke('get-profiles');
+    this.profiles = profiles;
     this.selectedProfile = this.profiles[0];
-    
-    this.settings = await ipcRenderer.invoke('get-settings');
-    this.maxRam = await ipcRenderer.invoke('get-system-ram');
-    this.friends = await ipcRenderer.invoke('get-friends');
-    
-    // ✅ CHARGER LES PRÉFÉRENCES DE THÈME
+    this.selectedLaunchLoader = 'vanilla';
+
+    this.settings = settings;
+    this.maxRam = maxRam;
+    this.friends = friends;
     this.loadTheme();
+    void this.loadDeferredData();
   }
 
   async updateFriendsStatus() {
@@ -206,11 +336,32 @@ class CraftLauncherApp {
       const maximizeBtn = e.target.closest('#maximize-btn');
       const closeBtn = e.target.closest('#close-btn');
       const radioBtn = e.target.closest('#radio-player-btn');
+      const newsCardItem = e.target.closest('.news-card-item');
+      const viewAllNewsBtn = e.target.closest('#view-all-news-btn');
+      const newsletterBtn = e.target.closest('#newsletter-btn');
       
       if (minimizeBtn) ipcRenderer.send('minimize-window');
       else if (maximizeBtn) ipcRenderer.send('maximize-window');
       else if (closeBtn) ipcRenderer.send('close-window');
       else if (radioBtn) this.openRadioPlayer();
+      // ✅ LISTENER POUR LES ACTUALITÉS
+      else if (newsCardItem) {
+        e.preventDefault();
+        const newsId = newsCardItem.getAttribute('data-news-id');
+        if (newsId) {
+          this.showNewsDetail(parseInt(newsId));
+        }
+      }
+      // ✅ LISTENER POUR LE BOUTON "VOIR TOUTES LES ACTUALITÉS"
+      else if (viewAllNewsBtn) {
+        e.preventDefault();
+        this.currentView = 'news';
+        this.render();
+      }
+      // ✅ LISTENER POUR LA NEWSLETTER
+      else if (newsletterBtn) {
+        this.subscribeToNewsletter();
+      }
       else if (e.target.classList.contains('help-tab-btn')) {
         // Récupérer l'ID de l'onglet et afficher le contenu correspondant
         const tabName = e.target.id.replace('-btn', '');
@@ -248,18 +399,68 @@ class CraftLauncherApp {
     });
   }
 
+  // ✅ FONCTION POUR S'ABONNER À LA NEWSLETTER (SANS DOUBLONS)
+  async subscribeToNewsletter() {
+    const email = document.getElementById('newsletter-email')?.value.trim();
+    
+    if (!email) {
+      alert('❌ Veuillez entrer une adresse email');
+      return;
+    }
+    
+    // Validation email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('❌ Veuillez entrer une adresse email valide');
+      return;
+    }
+    
+    const btn = document.getElementById('newsletter-btn');
+    if (btn.disabled) return; // Éviter les doublons
+    
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✓ Enregistrement...';
+    
+    try {
+      // Sauvegarder l'email dans le localStorage
+      const subscribers = JSON.parse(localStorage.getItem('newsletter-subscribers') || '[]');
+      if (!subscribers.includes(email)) {
+        subscribers.push(email);
+        localStorage.setItem('newsletter-subscribers', JSON.stringify(subscribers));
+      }
+      
+      // Envoyer l'email au serveur
+      await ipcRenderer.invoke('subscribe-newsletter', { email });
+      
+      alert('✅ Merci ! Vous êtes abonné à la newsletter');
+      document.getElementById('newsletter-email').value = '';
+      btn.textContent = '✓ Abonné';
+      
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'S\'abonner';
+      }, 3000);
+    } catch (error) {
+      console.error('Erreur newsletter:', error);
+      alert('❌ Une erreur est survenue');
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
   render() {
-    const app = document.getElementById('app');
+    const appContainer = document.getElementById('app');
     if (!this.authData) {
       this.currentView = 'login';
     }
     if (this.currentView === 'login') {
-      app.innerHTML = this.renderLogin();
+      appContainer.innerHTML = this.renderLogin();
       this.setupLoginEvents();
     } else {
       // Afficher le layout principal d'abord
       const mainHtml = this.renderMainLayout();
-      app.innerHTML = mainHtml;
+      appContainer.innerHTML = mainHtml;
       
       // ✅ APPLIQUER LE THÈME LIGHT/DARK INITIAL (PARTOUT)
       const theme = localStorage.getItem('theme') || 'dark';
@@ -476,7 +677,10 @@ class CraftLauncherApp {
 renderMainLayout() {
     return `
       <div class="titlebar">
-        <div class="titlebar-title">${LauncherVersion.getName()}</div>
+        <div class="titlebar-title" style="display: flex; align-items: center; gap: 8px;">
+          <img src="../../assets/icon.ico" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
+          <span>${LauncherVersion.getName()}</span>
+        </div>
         <div class="titlebar-buttons">
           <button class="titlebar-button" id="radio-player-btn" title="Radio">${icons.radio}</button>
           <button class="titlebar-button minimize" id="minimize-btn" title="Réduire">
@@ -510,7 +714,7 @@ renderMainLayout() {
               <button class="menu-item ${this.currentView === 'main' ? 'active' : ''}" data-view="main">
                 <span class="menu-icon"><i class="bi bi-house-door"></i></span> Accueil
               </button>
-              <button class="menu-item ${this.currentView === 'friends' ? 'active' : ''}" data-view="friends">
+              <button class="menu-item ${this.currentView === 'friends' ? 'active' : ''}" data-view="friends" disabled style="opacity: 0.5; cursor: not-allowed;">
                 <span class="menu-icon"><i class="bi bi-people"></i></span> Amis
               </button>
               <button class="menu-item ${this.currentView === 'servers' ? 'active' : ''}" data-view="servers">
@@ -536,6 +740,9 @@ renderMainLayout() {
               </button>
               <button class="menu-item ${this.currentView === 'mods' ? 'active' : ''}" data-view="mods">
                 <span class="menu-icon"><i class="bi bi-puzzle"></i></span> Mods
+              </button>
+              <button class="menu-item ${['resourcepacks', 'ressourcespacks'].includes(this.currentView) ? 'active' : ''}" data-view="ressourcespacks">
+                <span class="menu-icon"><i class="bi bi-image"></i></span> Texture Packs
               </button>
               <button class="menu-item ${this.currentView === 'theme' ? 'active' : ''}" data-view="theme">
                 <span class="menu-icon"><i class="bi bi-palette"></i></span> Thème
@@ -568,7 +775,10 @@ renderMainLayout() {
   renderLogin() {
     return `
       <div class="titlebar">
-        <div class="titlebar-title">${LauncherVersion.getName()}</div>
+        <div class="titlebar-title" style="display: flex; align-items: center; gap: 8px;">
+          <img src="../../assets/icon.ico" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
+          <span>${LauncherVersion.getName()}</span>
+        </div>
         <div class="titlebar-buttons">
           <button class="titlebar-button" id="radio-player-btn" title="Radio">${icons.radio}</button>
           <button class="titlebar-button minimize" id="minimize-btn" title="Réduire">
@@ -738,61 +948,6 @@ renderMainLayout() {
         .login-button-primary:active {
           transform: translateY(0px);
         }
-        .login-separator {
-          display: flex;
-          align-items: center;
-          margin: 30px 0;
-          gap: 12px;
-        }
-        .login-separator-line {
-          flex: 1;
-          height: 1px;
-          background: rgba(99, 102, 241, 0.2);
-        }
-        .login-separator-text {
-          font-size: 12px;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        .offline-section {
-          background: rgba(99, 102, 241, 0.05);
-          border: 1px solid rgba(99, 102, 241, 0.2);
-          border-radius: 12px;
-          padding: 20px;
-        }
-        .offline-input {
-          width: 100%;
-          padding: 12px 16px;
-          background: rgba(15, 23, 42, 0.8);
-          border: 1px solid rgba(99, 102, 241, 0.3);
-          border-radius: 10px;
-          color: white;
-          font-size: 14px;
-          margin-bottom: 12px;
-          transition: all 0.3s ease;
-          box-sizing: border-box;
-        }
-        .offline-input:focus {
-          outline: none;
-          border-color: rgba(99, 102, 241, 0.8);
-          box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
-          background: rgba(15, 23, 42, 0.95);
-        }
-        .offline-input::placeholder {
-          color: #475569;
-        }
-        .login-button-secondary {
-          background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-          box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
-        }
-        .login-button-secondary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 15px 30px rgba(99, 102, 241, 0.5);
-        }
-        .login-button-secondary:active {
-          transform: translateY(0px);
-        }
         .login-footer {
           text-align: center;
           margin-top: 30px;
@@ -825,25 +980,6 @@ renderMainLayout() {
             <span>🪟</span>
             <span>Se connecter avec Microsoft</span>
           </button>
-
-          <div class="login-separator">
-            <div class="login-separator-line"></div>
-            <div class="login-separator-text">Ou</div>
-            <div class="login-separator-line"></div>
-          </div>
-
-          <div class="offline-section">
-            <input 
-              type="text" 
-              id="offline-username-input" 
-              class="offline-input" 
-              placeholder="Entrez votre pseudo Minecraft"
-            >
-            <button id="offline-login-btn" class="login-button login-button-secondary">
-              <span>🎮</span>
-              <span>Jouer en mode Hors-ligne</span>
-            </button>
-          </div>
 
           <div class="login-footer">
             <p class="login-version">${LauncherVersion.getName()} v${LauncherVersion.version}</p>
@@ -1019,10 +1155,17 @@ renderMainLayout() {
         const modsContent = await this.modsManager.render();
         setTimeout(() => this.modsManager.setupEvents(), 100);
         return modsContent;  // ← RETOURNER LE CONTENU
+      case 'resourcepacks':
+        return await this.renderTexturePacksView();
       case 'theme': return this.renderThemeSettings();
       case 'help': return this.renderHelp();
       default: return '';
     }
+  }
+
+  normalizeViewName(view) {
+    if (view === 'ressourcespacks') return 'resourcepacks';
+    return view;
   }
 
   getGreetingMessage() {
@@ -1113,6 +1256,12 @@ renderMainLayout() {
     const headUrl = this.playerHead?.success ? this.playerHead.url : firstSrc;
     
     const greetingMessage = this.getGreetingMessage();
+    const selectedVersion = this.selectedProfile?.version || '26.1.2';
+    const availableLoaders = this.getAvailableLoadersForVersion(selectedVersion);
+    const activeLaunchLoader = this.getActiveLaunchLoader(selectedVersion);
+    const loaderHint = activeLaunchLoader === 'vanilla'
+      ? 'Minecraft se lancera sans loader.'
+      : `Minecraft se lancera avec ${this.formatLoaderLabel(activeLaunchLoader)}.`;
     
     // Icône Microsoft SVG
     const microsoftIcon = `<svg width="20" height="20" viewBox="0 0 23 23" fill="none">
@@ -1144,9 +1293,7 @@ renderMainLayout() {
             <div class="hero-text">
               <h1 class="hero-title">${greetingMessage}</h1>
               <p class="hero-subtitle">
-                ${this.authData?.type === 'microsoft' 
-                  ? `<span style="display: inline-flex; align-items: center; gap: 6px;">${microsoftIcon} Compte Microsoft</span>` 
-                  : '🎮 Mode Hors ligne'}
+                <span style="display: inline-flex; align-items: center; gap: 6px;">${microsoftIcon} Compte Microsoft</span>
               </p>
             </div>
           </div>
@@ -1156,14 +1303,13 @@ renderMainLayout() {
         <div class="main-launch-card">
           <div class="launch-card-header">
             <div class="version-info">
-              <span class="version-badge" id="version-badge-display">Minecraft ${this.selectedProfile?.version || '26.1.2'}</span>
+              <span class="version-badge" id="version-badge-display">Minecraft ${selectedVersion}</span>
               <span class="ram-badge" id="ram-badge-display">${this.settings.ramAllocation || 4} GB RAM</span>
             </div>
             
             <select id="version-select" class="version-selector">
               <option value="26.1.2" ${this.selectedProfile?.version === '26.1.2' ? 'selected' : ''}>26.1.2</option>
               <option value="26.1.1" ${this.selectedProfile?.version === '26.1.1' ? 'selected' : ''}>26.1.1</option>
-              <option value="26.1" ${this.selectedProfile?.version === '26.1' ? 'selected' : ''}>26.1</option>
               <option value="1.21.11" ${this.selectedProfile?.version === '1.21.11' ? 'selected' : ''}>1.21.11</option>
               <option value="1.21.10" ${this.selectedProfile?.version === '1.21.10' ? 'selected' : ''}>1.21.10</option>
               <option value="1.21.9" ${this.selectedProfile?.version === '1.21.9' ? 'selected' : ''}>1.21.9</option>
@@ -1190,6 +1336,31 @@ renderMainLayout() {
               <option value="1.8.9" ${this.selectedProfile?.version === '1.8.9' ? 'selected' : ''}>1.8.9</option>
             </select>
           </div>
+
+          ${availableLoaders.length > 0 ? `
+            <div class="loader-submenu">
+              <div class="loader-submenu-label">Mode de lancement</div>
+              <div class="loader-options">
+                <button
+                  type="button"
+                  class="loader-option-btn ${activeLaunchLoader === 'vanilla' ? 'active' : ''}"
+                  data-loader-option="vanilla"
+                >
+                  Sans loader
+                </button>
+                ${availableLoaders.map(item => `
+                  <button
+                    type="button"
+                    class="loader-option-btn ${activeLaunchLoader === item.loader ? 'active' : ''}"
+                    data-loader-option="${item.loader}"
+                  >
+                    ${item.label}
+                  </button>
+                `).join('')}
+              </div>
+              <p class="loader-submenu-hint" id="loader-selection-hint">${loaderHint}</p>
+            </div>
+          ` : ''}
 
           <div id="launch-progress-container" class="launch-progress" style="display: none;">
             <div class="progress-text" id="launch-progress-text">Préparation...</div>
@@ -1235,15 +1406,15 @@ renderMainLayout() {
             </div>
             <div class="quick-actions">
               <button class="quick-action-btn" id="home-settings-btn">
-                <span>${icons.settings}</span>
+                <span style="font-size: 14px;">${icons.settings}</span>
                 <span>Paramètres</span>
               </button>
               <button class="quick-action-btn" id="home-mods-btn">
-                <span>${icons.mods}</span>
+                <span style="font-size: 14px;">${icons.mods}</span>
                 <span>Mods</span>
               </button>
               <button class="quick-action-btn" id="home-storage-btn">
-                <span>${icons.folder}</span>
+                <span style="font-size: 14px;">${icons.folder}</span>
                 <span>Dossier</span>
               </button>
             </div>
@@ -1343,18 +1514,29 @@ renderMainLayout() {
           <div class="info-card news-card">
             <div class="card-header">
               <span class="card-icon">${icons.newspaper}</span>
-              <h3>Dernières actus</h3>
+              <h3>Dernières actualités</h3>
+              <a id="view-all-news-btn" href="#" style="margin-left: auto; color: #6366f1; text-decoration: none; font-size: 12px; font-weight: 600; cursor: pointer;">Voir toutes →</a>
             </div>
-            <div class="news-item">
-              <div class="news-date">Il y a 2 jours</div>
-              <div class="news-title">${LauncherVersion.getName()} v${LauncherVersion.version} disponible</div>
-              <div class="news-excerpt">Nouvelles fonctionnalités et corrections de bugs</div>
-            </div>
-            <div class="news-item">
-              <div class="news-date">Il y a 5 jours</div>
-              <div class="news-title">Minecraft 1.21.11 sortie officielle</div>
-              <div class="news-excerpt">Découvrez les nouvelles fonctionnalités</div>
-            </div>
+            ${this.news && this.news.length > 0 ? 
+              this.news.slice(0, 3).map(news => `
+                <div class="news-card-item" data-news-id="${news.id}" style="background: rgba(99, 102, 241, 0.05); border-left: 2px solid #6366f1; padding: 8px; margin: 6px 0; cursor: pointer; transition: all 0.3s; border-radius: 6px;">
+                  <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <span style="font-size: 18px; flex-shrink: 0;">${news.image || '📰'}</span>
+                    <div style="flex: 1; min-width: 0;">
+                      <div class="news-title" style="color: #e2e8f0; font-weight: 600; font-size: 12px; margin-bottom: 2px;">${news.title}</div>
+                      <div class="news-date" style="font-size: 10px; color: #94a3b8; margin-bottom: 4px;">
+                        ${new Date(news.date).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })}
+                      </div>
+                      <div class="news-excerpt" style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">${news.excerpt}</div>
+                    </div>
+                  </div>
+                </div>
+              `).join('')
+              : `
+              <div style="text-align: center; padding: 20px; color: #9ca3af;">
+                <p>📰 Pas d'actualités disponibles</p>
+              </div>
+            `}
           </div>
         </div>
       </div>
@@ -1511,6 +1693,59 @@ renderMainLayout() {
           box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
+        .loader-submenu {
+          margin: 18px 0 20px;
+          padding: 14px 16px;
+          background: rgba(15, 23, 42, 0.45);
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          border-radius: 12px;
+        }
+
+        .loader-submenu-label {
+          display: block;
+          color: #cbd5e1;
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 10px;
+        }
+
+        .loader-options {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .loader-option-btn {
+          padding: 10px 14px;
+          background: rgba(15, 23, 42, 0.8);
+          border: 1px solid rgba(99, 102, 241, 0.3);
+          border-radius: 10px;
+          color: #cbd5e1;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .loader-option-btn:hover {
+          border-color: #818cf8;
+          color: #ffffff;
+        }
+
+        .loader-option-btn.active {
+          background: rgba(99, 102, 241, 0.22);
+          border-color: #6366f1;
+          color: #ffffff;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+        }
+
+        .loader-submenu-hint {
+          margin: 10px 0 0;
+          color: #94a3b8;
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
         .launch-progress {
           background: rgba(15, 23, 42, 0.6);
           border-radius: 12px;
@@ -1613,7 +1848,7 @@ renderMainLayout() {
           backdrop-filter: blur(20px);
           border: 1px solid rgba(99, 102, 241, 0.2);
           border-radius: 16px;
-          padding: 24px;
+          padding: 16px;
           transition: all 0.3s;
         }
 
@@ -1627,8 +1862,8 @@ renderMainLayout() {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin-bottom: 20px;
-          padding-bottom: 16px;
+          margin-bottom: 12px;
+          padding-bottom: 8px;
           border-bottom: 1px solid rgba(99, 102, 241, 0.1);
         }
 
@@ -1638,7 +1873,7 @@ renderMainLayout() {
 
         .card-header h3 {
           margin: 0;
-          font-size: 18px;
+          font-size: 16px;
           font-weight: 600;
           color: #e2e8f0;
         }
@@ -1668,19 +1903,19 @@ renderMainLayout() {
 
         .quick-actions {
           display: grid;
-          gap: 12px;
+          gap: 8px;
         }
 
         .quick-action-btn {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 14px 16px;
+          gap: 8px;
+          padding: 8px 12px;
           background: rgba(99, 102, 241, 0.1);
           border: 1px solid rgba(99, 102, 241, 0.2);
-          border-radius: 10px;
+          border-radius: 8px;
           color: #e2e8f0;
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s;
@@ -1695,16 +1930,16 @@ renderMainLayout() {
         .server-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 6px;
         }
 
         .server-item {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 12px;
+          gap: 6px;
+          padding: 6px 8px;
           background: rgba(99, 102, 241, 0.05);
-          border-radius: 10px;
+          border-radius: 6px;
           transition: all 0.3s;
         }
 
@@ -1741,24 +1976,24 @@ renderMainLayout() {
         }
 
         .server-name {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 600;
           color: #e2e8f0;
-          margin-bottom: 2px;
+          margin-bottom: 0px;
         }
 
         .server-players {
-          font-size: 12px;
+          font-size: 10px;
           color: #64748b;
         }
 
         .server-join-btn {
-          padding: 6px 14px;
+          padding: 4px 10px;
           background: linear-gradient(135deg, #6366f1, #8b5cf6);
           border: none;
-          border-radius: 6px;
+          border-radius: 4px;
           color: white;
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s;
@@ -1795,6 +2030,19 @@ renderMainLayout() {
         .news-excerpt {
           font-size: 12px;
           color: #94a3b8;
+        }
+
+        .news-card-item {
+          white-space: normal;
+          word-break: break-word;
+          padding: 10px !important;
+          margin: 6px 0 !important;
+        }
+
+        .news-card-item:hover {
+          background: rgba(99, 102, 241, 0.15) !important;
+          border-left-color: #8b5cf6 !important;
+          transform: translateX(2px);
         }
 
         @media (max-width: 768px) {
@@ -1904,7 +2152,7 @@ renderMainLayout() {
           <h2 style="font-size: 20px; margin-bottom: 15px;">Serveur personnalisé</h2>
           <div class="custom-server-input">
             <input type="text" class="input-field" id="custom-server-ip" placeholder="Ex: play.hypixel.net" style="flex: 1;">
-            <button class="btn-primary" id="join-custom-server" style="display: flex; align-items: center; justify-content: center; gap: 8px;" ${this.authData?.type === 'offline' ? 'disabled' : ''}>${icons.globe} Rejoindre</button>
+            <button class="btn-primary" id="join-custom-server" style="display: flex; align-items: center; justify-content: center; gap: 8px;">${icons.globe} Rejoindre</button>
           </div>
         </div>
 
@@ -1926,9 +2174,8 @@ renderMainLayout() {
     // Liste des versions Minecraft populaires
     const versions = [
       { version: '26.1.2', release: '2026', type: 'stable' },
-      { version: '26.1.1', release: '2026', type: 'stable' },
-      { version: '26.1', release: '2026', type: 'stable' },
-      { version: '1.21.11', release: '2025', type: 'stable' },
+      { version: '26.1.1', release: '2026', type: 'unsupported' },
+      { version: '1.21.11', release: '2025', type: 'unsupported' },
       { version: '1.21.10', release: '2025', type: 'unsupported' },
       { version: '1.21.9', release: '2025', type: 'unsupported' },
       { version: '1.21.8', release: '2025', type: 'unsupported' },
@@ -2012,13 +2259,6 @@ renderMainLayout() {
 
   renderPartnersView() {
     const partners = [
-      { 
-        name: 'Hypixel Studios',
-        logo: '🏢',
-        description: 'Le plus grand serveur Minecraft avec des millions de joueurs',
-        website: 'https://hypixel.net',
-        joinUrl: 'mc.hypixel.net'
-      },
       { 
         name: 'LunaVerse',
         logo: '🌕',
@@ -2189,15 +2429,84 @@ renderMainLayout() {
   }
 
   renderNewsView() {
-    return `
-      <div class="view-container">
-        <h1 class="view-title">Actualités</h1>
-        
-        <div class="news-container" id="news-container">
-          <div style="text-align: center; padding: 40px; color: #9ca3af;">
-            <p>Chargement des actualités...</p>
+    if (this.news.length === 0) {
+      return `
+        <div class="view-container">
+          <h1 class="view-title">${icons.newspaper} Actualités</h1>
+          <div style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+            <p>📰 Aucune actualité disponible pour le moment</p>
           </div>
         </div>
+      `;
+    }
+
+    // Grouper les actualités par catégorie
+    const categories = {};
+    this.news.forEach(news => {
+      if (!categories[news.category]) {
+        categories[news.category] = [];
+      }
+      categories[news.category].push(news);
+    });
+
+    const categoryLabels = {
+      launcher: '🚀 Launcher',
+      minecraft: ' Minecraft',
+      servers: '🔧 Serveurs',
+      mods: '🎨 Mods',
+      events: '🏆 Événements',
+      general: '📢 Général'
+    };
+
+    return `
+      <div class="view-container" style="max-width: 1200px; margin: 0 auto;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 32px;">
+          <h1 class="view-title" style="margin: 0;">${icons.newspaper} Actualités</h1>
+          <span style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;">
+            ${this.news.length} actualité${this.news.length > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div style="display: grid; gap: 24px;">
+          ${Object.entries(categories).map(([category, items]) => `
+            <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; overflow: hidden;">
+              <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); padding: 16px; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
+                <h2 style="margin: 0; font-size: 16px; color: #e2e8f0; display: flex; align-items: center; gap: 8px;">
+                  <span>${categoryLabels[category] || '📚 ' + category}</span>
+                  <span style="background: rgba(99, 102, 241, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #a5b4fc;">${items.length}</span>
+                </h2>
+              </div>
+              <div style="display: grid; gap: 1px; background: rgba(99, 102, 241, 0.1);">
+                ${items.map(news => `
+                  <div class="news-card-item" data-news-id="${news.id}" style="background: rgba(15, 23, 42, 0.6); padding: 20px; cursor: pointer; transition: all 0.3s; border-left: 4px solid transparent; hover-background: rgba(99, 102, 241, 0.1);">
+                    <div style="display: flex; gap: 16px; align-items: flex-start;">
+                      <div style="font-size: 32px; flex-shrink: 0;">${news.image || '📰'}</div>
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                          <h3 style="margin: 0; font-size: 16px; color: #e2e8f0; font-weight: 600;">${news.title}</h3>
+                          ${news.featured ? '<span style="background: rgba(255, 193, 7, 0.3); color: #fcd34d; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">EN VEDETTE</span>' : ''}
+                        </div>
+                        <p style="margin: 0 0 8px 0; color: #cbd5e1; font-size: 14px; line-height: 1.5;">${news.excerpt}</p>
+                        <div style="display: flex; align-items: center; gap: 12px; color: #64748b; font-size: 12px;">
+                          <span>📅 ${new Date(news.date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                          ${news.category ? `<span style="background: rgba(99, 102, 241, 0.2); padding: 2px 8px; border-radius: 4px;">${categoryLabels[news.category] || news.category}</span>` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <style>
+          .news-card-item:hover {
+            background: rgba(99, 102, 241, 0.08) !important;
+            border-left-color: rgba(99, 102, 241, 0.5) !important;
+            transform: translateX(4px);
+          }
+        </style>
       </div>
     `;
   }
@@ -2608,112 +2917,240 @@ renderMainLayout() {
     `;
   }
 
-  // ✅ PAGE ACTUALITÉS
-  renderNewsView() {
-    const news = [
-      {
-        title: `🚀 ${LauncherVersion.getName()} v${LauncherVersion.version} est en ligne !`,
-        date: '17 Janvier 2026',
-        author: `${LauncherVersion.getName()} Team`,
-        description: 'La nouvelle version majeure est ici avec un design complètement refondu, système de mods intégré, et bien plus encore !',
-        image: '🎉',
-        category: 'Mise à jour'
-      },
-      {
-        title: '📊 Système de Statistiques amélioré',
-        date: '15 Janvier 2026',
-        author: 'Dev Team',
-        description: 'Suivez vos statistiques en détail avec des graphiques interactifs et des analyses de votre gameplay.',
-        image: '📈',
-        category: 'Fonctionnalité'
-      },
-      {
-        title: '👥 Système d\'Amis en bêta',
-        date: '10 Janvier 2026',
-        author: 'Community Manager',
-        description: 'Invitez vos amis et jouez ensemble ! Système d\'amis maintenant disponible en version bêta.',
-        image: '👥',
-        category: 'Communauté'
-      },
-      {
-        title: '🎨 Thèmes personnalisés disponibles',
-        date: '5 Janvier 2026',
-        author: 'Design Team',
-        description: 'Personnalisez le launcher avec vos propres couleurs et thèmes !',
-        image: '🎨',
-        category: 'Fonctionnalité'
-      },
-      {
-        title: '🔧 Gestionnaire de Mods à venir',
-        date: '1 Janvier 2026',
-        author: 'Product Team',
-        description: 'Un gestionnaire de mods révolutionnaire est en développement et sera bientôt disponible !',
-        image: '🔧',
-        category: 'Annonce'
-      },
-      {
-        title: `🏆 Tournoi ${LauncherVersion.getName()} #1 - Inscriptions ouvertes !`,
-        date: '28 Décembre 2025',
-        author: 'Community Manager',
-        description: `Participez au premier tournoi officiel de ${LauncherVersion.getName()} ! Récompenses à la clé !`,
-        image: '🏆',
-        category: 'Événement'
-      }
-    ];
+  async renderTexturePacksView() {
+    const [resourcepacksFolder, installedPacks] = await Promise.all([
+      ipcRenderer.invoke('get-resourcepacks-folder').catch(() => ''),
+      ipcRenderer.invoke('get-installed-resourcepacks').catch(() => [])
+    ]);
+    const selectedProfile = this.selectedProfile || this.profiles?.[0] || null;
+    const gameVersion = selectedProfile?.version || '';
+    const packs = Array.isArray(installedPacks) ? installedPacks : [];
 
     return `
-      <div class="view-container">
-        <div class="view-header">
-          <h1 class="view-title">📰 Actualités ${LauncherVersion.getName()}</h1>
+      <div class="view-container" style="padding: 40px;">
+        <div class="view-header" style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div>
+            <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;"><i class="bi bi-image"></i> Texture Packs</h1>
+            <p style="color: #94a3b8; margin-top: 10px;">${packs.length} pack(s) installé(s) • Téléchargez et gérez vos packs de textures.</p>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button id="btn-open-resourcepacks-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
+            <button id="btn-refresh-resourcepacks" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
+          </div>
         </div>
 
-        <div style="max-width: 1000px; margin: 0 auto;">
-          <div style="display: grid; gap: 20px;">
-            ${news.map(article => `
-              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px; padding: 24px; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.transform='translateY(-2px)'; this.style.borderColor='rgba(99, 102, 241, 0.5)'" onmouseout="this.style.transform='translateY(0)'; this.style.borderColor='rgba(99, 102, 241, 0.2)'">
-                <div style="display: flex; gap: 16px;">
-                  <div style="font-size: 48px; min-width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; background: rgba(99, 102, 241, 0.1); border-radius: 10px;">
-                    ${article.image}
-                  </div>
-                  
-                  <div style="flex: 1;">
-                    <div style="display: flex; align-items: start; justify-content: space-between; gap: 12px;">
-                      <div style="flex: 1;">
-                        <h2 style="color: #e2e8f0; font-size: 18px; font-weight: 700; margin-bottom: 8px;">${article.title}</h2>
-                        <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
-                          <span style="background: rgba(99, 102, 241, 0.2); color: #6366f1; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">${article.category}</span>
-                          <span style="color: #94a3b8; font-size: 12px;">📅 ${article.date}</span>
-                          <span style="color: #64748b; font-size: 12px;">Par ${article.author}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${article.description}</p>
-                    
-                    <button class="btn-primary" style="padding: 8px 16px; font-size: 12px;">Lire la suite →</button>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">
+            <strong style="color: #6366f1;">Chemin d'installation :</strong> ${this.escapeHtml(resourcepacksFolder || 'Non disponible')}
           </div>
+          <div style="color: #94a3b8; font-size: 12px;">
+            Version ciblée : ${this.escapeHtml(gameVersion || 'Inconnue')} • Les packs compatibles sont recherchés sur Modrinth.
+          </div>
+        </div>
 
-          <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 14px; padding: 40px; margin-top: 40px; text-align: center;">
-            <h2 style="color: #e2e8f0; font-size: 24px; font-weight: 700; margin-bottom: 12px;">📧 Restez informé</h2>
-            <p style="color: #cbd5e1; margin-bottom: 20px;">Abonnez-vous à notre newsletter pour recevoir les dernières actualités</p>
-            <div style="display: flex; gap: 10px; max-width: 500px; margin: 0 auto;">
-              <input type="email" id="newsletter-email" class="input-field" placeholder="Votre email" style="flex: 1;">
-              <button id="newsletter-btn" class="btn-primary" style="white-space: nowrap;">S'abonner</button>
-            </div>
+        ${packs.length === 0 ? this.renderEmptyResourcePacks() : this.renderInstalledResourcePacksList(packs)}
+        ${this.renderResourcePackStats(packs)}
+        ${this.renderResourcePackInfo()}
+
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #e2e8f0; font-size: 15px; font-weight: 700; margin-bottom: 12px;">Recherche Modrinth</div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <input id="resourcepack-search-input" type="text" placeholder="Rechercher un texture pack..." style="flex: 1; min-width: 260px; padding: 12px; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; color: #e2e8f0; font-size: 14px;">
+            <button id="btn-search-resourcepacks" class="btn-primary" style="padding: 10px 18px; width: auto;">Rechercher</button>
+          </div>
+        </div>
+
+        <div id="resourcepacks-results" style="max-width: 1000px;">
+          <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 16px;">${icons.download}</div>
+            <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Recherchez un texture pack</h3>
+            <p style="color: #94a3b8; margin: 0;">Les téléchargements seront placés dans le dossier resourcepacks du jeu.</p>
           </div>
         </div>
       </div>
     `;
   }
 
+  renderEmptyResourcePacks() {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px;">
+        <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 16px;">${icons.download}</div>
+          <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Aucun texture pack installe</h3>
+          <p style="color: #94a3b8; margin: 0;">Utilisez la recherche Modrinth ci-dessous pour telecharger votre premier pack.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  renderInstalledResourcePacksList(packs) {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+          <h2 style="margin: 0; color: #e2e8f0; font-size: 20px;">Packs installes</h2>
+          <div style="color: #94a3b8; font-size: 12px;">Cliquez sur un pack pour voir ses details.</div>
+        </div>
+        <div id="resourcepacks-list-container" style="display: block; width: 100%;">
+          ${packs.map((pack) => this.renderResourcePackItem(pack)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderResourcePackItem(pack) {
+    const details = [
+      `Fichier : ${pack.fileName || 'Inconnu'}`,
+      `Type : ${pack.type === 'folder' ? 'Dossier' : 'Archive'}`,
+      `Taille : ${pack.size || 'N/A'}`
+    ].join(' • ');
+
+    return `
+      <div class="resourcepack-item" data-pack-name="${this.escapeHtml(pack.name || '')}" data-file-name="${this.escapeHtml(pack.fileName || '')}" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-size="${this.escapeHtml(pack.size || '')}" data-pack-type="${this.escapeHtml(pack.type || '')}" data-imported-at="${this.escapeHtml(pack.importedAt || '')}" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: all 0.3s; width: 100%; min-width: 0; margin-bottom: 12px; cursor: pointer;">
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+          <div style="width: 20px; text-align: center; flex-shrink: 0;">${pack.type === 'folder' ? '📁' : '🖼️'}</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${this.escapeHtml(pack.name || pack.fileName || 'Texture pack')}</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${this.escapeHtml(details)}
+            </div>
+          </div>
+        </div>
+        <button class="btn-delete-resourcepack" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-name="${this.escapeHtml(pack.name || '')}" title="Supprimer ce texture pack" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 8px; transition: all 0.3s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-shrink: 0;">
+          🗑️
+        </button>
+      </div>
+    `;
+  }
+
+  renderResourcePackStats(packs) {
+    const folderCount = packs.filter((pack) => pack.type === 'folder').length;
+    const archiveCount = packs.length - folderCount;
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        ${this.renderStatCard('Packs installes', packs.length, icons.download)}
+        ${this.renderStatCard('Archives', archiveCount, '🗜️', '#22c55e')}
+        ${this.renderStatCard('Dossiers', folderCount, '📁', '#f59e0b')}
+      </div>
+    `;
+  }
+
+  renderStatCard(label, value, icon, color = '#e2e8f0') {
+    return `
+      <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 20px; text-align: center;">
+        <div style="font-size: 24px; margin-bottom: 8px;">${icon}</div>
+        <div style="color: ${color}; font-weight: 600; margin-bottom: 4px;">${value}</div>
+        <div style="color: #94a3b8; font-size: 12px;">${label}</div>
+      </div>
+    `;
+  }
+
+  renderResourcePackInfo() {
+    return `
+      <div style="max-width: 1000px; padding: 20px; margin-bottom: 30px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
+        <p style="color: #cbd5e1; margin: 0; font-size: 14px;">
+          <strong style="color: #6366f1;">Info :</strong> Les noms longs sont tronques dans la liste, mais vous pouvez cliquer sur un pack pour afficher ses details complets ou le supprimer.
+        </p>
+      </div>
+    `;
+  }
+
+  // ✅ PAGE ACTUALITÉS - 100% DYNAMIQUE DEPUIS JSON
+  renderNewsView() {
+    if (!this.news || this.news.length === 0) {
+      return `
+        <div class="view-container">
+          <h1 class="view-title">${icons.newspaper} Actualités</h1>
+          <div style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+            <p>📰 Aucune actualité disponible pour le moment</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Grouper les actualités par catégorie
+    const categories = {};
+    this.news.forEach(news => {
+      if (!categories[news.category]) {
+        categories[news.category] = [];
+      }
+      categories[news.category].push(news);
+    });
+
+    const categoryLabels = {
+      launcher: '🚀 Launcher',
+      minecraft: ' Minecraft',
+      servers: '🔧 Serveurs',
+      mods: '🎨 Mods',
+      events: '🏆 Événements',
+      general: '📢 Général'
+    };
+
+    return `
+      <div class="view-container" style="max-width: 1200px; margin: 0 auto;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 32px;">
+          <h1 class="view-title" style="margin: 0;">${icons.newspaper} Actualités</h1>
+          <span style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;">
+            ${this.news.length} actualité${this.news.length > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div style="display: grid; gap: 24px;">
+          ${Object.entries(categories).map(([category, items]) => `
+            <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; overflow: hidden;">
+              <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); padding: 16px; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
+                <h2 style="margin: 0; font-size: 16px; color: #e2e8f0; display: flex; align-items: center; gap: 8px;">
+                  <span>${categoryLabels[category] || '📚 ' + category}</span>
+                  <span style="background: rgba(99, 102, 241, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #a5b4fc;">${items.length}</span>
+                </h2>
+              </div>
+              <div style="display: grid; gap: 1px; background: rgba(99, 102, 241, 0.1);">
+                ${items.map(news => `
+                  <div class="news-card-item" data-news-id="${news.id}" style="background: rgba(15, 23, 42, 0.6); padding: 20px; cursor: pointer; transition: all 0.3s; border-left: 4px solid transparent;">
+                    <div style="display: flex; gap: 16px; align-items: flex-start;">
+                      <div style="font-size: 32px; flex-shrink: 0;">${news.image || '📰'}</div>
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                          <h3 style="margin: 0; font-size: 16px; color: #e2e8f0; font-weight: 600;">${news.title}</h3>
+                          ${news.featured ? '<span style="background: rgba(255, 193, 7, 0.3); color: #fcd34d; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">★ EN VEDETTE</span>' : ''}
+                        </div>
+                        <p style="margin: 0 0 8px 0; color: #cbd5e1; font-size: 14px; line-height: 1.5;">${news.excerpt}</p>
+                        <div style="display: flex; align-items: center; gap: 12px; color: #64748b; font-size: 12px;">
+                          <span>📅 ${new Date(news.date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                          ${news.category ? `<span style="background: rgba(99, 102, 241, 0.2); padding: 2px 8px; border-radius: 4px;">${categoryLabels[news.category] || news.category}</span>` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 14px; padding: 40px; margin-top: 40px; text-align: center;">
+          <h2 style="color: #e2e8f0; font-size: 24px; font-weight: 700; margin-bottom: 12px;">📧 Restez informé</h2>
+          <p style="color: #cbd5e1; margin-bottom: 20px;">Abonnez-vous à notre newsletter pour recevoir les dernières actualités</p>
+          <div style="display: flex; gap: 10px; max-width: 500px; margin: 0 auto;">
+            <input type="email" id="newsletter-email" class="input-field" placeholder="Votre email" style="flex: 1;">
+            <button id="newsletter-btn" class="btn-primary" style="white-space: nowrap;">S'abonner</button>
+          </div>
+        </div>
+
+        <style>
+          .news-card-item:hover {
+            background: rgba(99, 102, 241, 0.08) !important;
+            border-left-color: rgba(99, 102, 241, 0.5) !important;
+            transform: translateX(4px);
+          }
+        </style>
+      </div>
+    `;
+  }
+
   setupLoginEvents() {
     const microsoftBtn = document.getElementById('ms-login-btn');
-    const offlineBtn = document.getElementById('offline-login-btn');
-    const offlineInput = document.getElementById('offline-username-input');
 
     if (microsoftBtn) {
       microsoftBtn.addEventListener('click', async () => {
@@ -2733,26 +3170,6 @@ renderMainLayout() {
           microsoftBtn.innerHTML = '<span style="font-size: 20px;">🪟</span> Se connecter avec Microsoft';
         }
       });
-    }
-
-    if (offlineBtn) {
-      const handleOffline = async () => {
-        const username = offlineInput.value.trim();
-        if (username) {
-          const result = await ipcRenderer.invoke('login-offline', username);
-          if (result.success) {
-            this.authData = result.data;
-            this.currentView = 'main';
-            await this.loadData();
-            this.render();
-          }
-        } else {
-          alert('Entrez un pseudo');
-        }
-      };
-
-      offlineBtn.addEventListener('click', handleOffline);
-      offlineInput.addEventListener('keypress', e => e.key === 'Enter' && handleOffline());
     }
   }
 
@@ -2798,7 +3215,7 @@ renderMainLayout() {
     this.viewChangeListener = (e) => {
       const button = e.target.closest('[data-view]');
       if (button && !button.disabled) {
-        const view = button.getAttribute('data-view');
+        const view = this.normalizeViewName(button.getAttribute('data-view'));
         
         // Cas spécial pour Paramètres
         if (view === 'settings') {
@@ -2899,58 +3316,6 @@ renderMainLayout() {
       this.render();
     });
 
-    // ✅ NEWSLETTER - S'ABONNER
-    setTimeout(() => {
-      const newsletterBtn = document.getElementById('newsletter-btn');
-      const newsletterEmail = document.getElementById('newsletter-email');
-      
-      if (newsletterBtn && newsletterEmail) {
-        newsletterBtn.addEventListener('click', async () => {
-          const email = newsletterEmail.value.trim();
-          
-          // Validation email
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!email || !emailRegex.test(email)) {
-            alert('❌ Veuillez entrer une adresse email valide');
-            return;
-          }
-          
-          const originalText = newsletterBtn.textContent;
-          newsletterBtn.disabled = true;
-          newsletterBtn.textContent = '✓ Enregistrement...';
-          
-          try {
-            // Sauvegarder l'email dans le localStorage
-            const subscribers = JSON.parse(localStorage.getItem('newsletter-subscribers') || '[]');
-            if (!subscribers.includes(email)) {
-              subscribers.push(email);
-              localStorage.setItem('newsletter-subscribers', JSON.stringify(subscribers));
-            }
-            
-            // Envoyer l'email au serveur (optionnel)
-            await ipcRenderer.invoke('subscribe-newsletter', { email });
-            
-            alert('✅ Merci ! Vous êtes abonné à la newsletter');
-            newsletterEmail.value = '';
-          } catch (error) {
-            console.error('Erreur newsletter:', error);
-            // Même si l'envoi échoue, on a sauvegardé localement
-            alert('✅ Merci ! Vous êtes abonné à la newsletter');
-            newsletterEmail.value = '';
-          } finally {
-            newsletterBtn.disabled = false;
-            newsletterBtn.textContent = originalText;
-          }
-        });
-        
-        // Permettre d'appuyer sur Entrée pour s'abonner
-        newsletterEmail.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') {
-            newsletterBtn.click();
-          }
-        });
-      }
-    }, 100);
 /*
     // ✅ BOUTON RADIO - DÉLÉGATION D'ÉVÉNEMENTS (fonctionne sur toutes les pages)
     const existingRadioListener = this.listeners.get('radio-click');
@@ -3073,39 +3438,7 @@ renderMainLayout() {
     const launchBtn = document.getElementById('launch-btn');
     if (launchBtn) {
       launchBtn.addEventListener('click', async () => {
-        launchBtn.disabled = true;
-        launchBtn.innerHTML = '⏳ Vérification...';
-        
-        try {
-          const authData = await ipcRenderer.invoke('get-auth-data');
-          
-          if (authData && authData.type === 'offline') {
-            const confirm = await ipcRenderer.invoke('show-confirm-dialog', {
-              title: 'Mode Hors Ligne',
-              message: '⚠️ Vous êtes en mode HORS LIGNE.\n\nLes nouvelles versions ne peuvent pas être téléchargées. Utilisez une version déjà installée ou connectez-vous avec Microsoft pour télécharger les mises à jour.'
-            });
-            
-            if (!confirm) {
-              launchBtn.disabled = false;
-              launchBtn.innerHTML = `${icons.zap} Lancer Minecraft`;
-              return;
-            }
-          }
-          
-          const result = await ipcRenderer.invoke('launch-minecraft', 
-            this.selectedProfile || { version: '1.21.4', ram: 4 },
-            null
-          );
-          
-          if (!result.success) {
-            alert('❌ ' + result.error);
-          }
-        } catch (error) {
-          alert('❌ Erreur: ' + error.message);
-        } finally {
-          launchBtn.disabled = false;
-          launchBtn.innerHTML = `${icons.zap} Lancer Minecraft`;
-        }
+        await this.launchGame();
       });
     }
 
@@ -3229,6 +3562,9 @@ renderMainLayout() {
       btn.parentNode.replaceChild(newBtn, btn);
       
       newBtn.addEventListener('click', async () => {
+        if (newBtn.disabled) {
+          return;
+        }
         if (newBtn.dataset.view === 'settings') {
           ipcRenderer.send('open-settings');
           return;
@@ -3239,7 +3575,7 @@ renderMainLayout() {
           this.loadHomePageInfo();
         }
         
-        this.currentView = newBtn.dataset.view;
+        this.currentView = this.normalizeViewName(newBtn.dataset.view);
         this.render();
       });
     });
@@ -3252,14 +3588,10 @@ renderMainLayout() {
         const result = await ipcRenderer.invoke('update-profile-version', version);
         
         if (result.success) {
-          this.selectedProfile = result.profile;
-          
-          // ✅ Mettre à jour le badge de version
-          const versionBadge = document.getElementById('version-badge-display');
-          if (versionBadge) {
-            versionBadge.textContent = `Minecraft ${version}`;
-          }
-          
+          this.profiles = await ipcRenderer.invoke('get-profiles');
+          this.selectedProfile = this.profiles.find(profile => profile.id === result.profile?.id) || result.profile;
+          this.selectedLaunchLoader = 'vanilla';
+          await this.renderContentAsync();
           console.log('✅ Version changed:', version);
         }
       } catch (error) {
@@ -3268,9 +3600,33 @@ renderMainLayout() {
       }
     });
 
+    document.querySelectorAll('[data-loader-option]').forEach((button) => {
+      button.addEventListener('click', () => {
+        this.selectedLaunchLoader = button.getAttribute('data-loader-option') || 'vanilla';
+
+        document.querySelectorAll('[data-loader-option]').forEach((item) => {
+          item.classList.toggle(
+            'active',
+            item.getAttribute('data-loader-option') === this.selectedLaunchLoader
+          );
+        });
+
+        const loaderHint = document.getElementById('loader-selection-hint');
+        if (loaderHint) {
+          loaderHint.textContent = this.selectedLaunchLoader === 'vanilla'
+            ? 'Minecraft se lancera sans loader.'
+            : `Minecraft se lancera avec ${this.formatLoaderLabel(this.selectedLaunchLoader)}.`;
+        }
+      });
+    });
+
     // ✅ HOME PAGE - CHARGER LES INFOS
     if (this.currentView === 'main') {
       this.loadHomePageInfo();
+    }
+
+    if (this.currentView === 'resourcepacks') {
+      this.setupTexturePacksEvents();
     }
 
     // ✅ AMIS
@@ -3316,13 +3672,26 @@ renderMainLayout() {
 
     document.querySelectorAll('[data-remove-friend]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (confirm('Êtes-vous sûr de vouloir supprimer cet ami ?')) {
+        const confirmed = await this.ui.showConfirm({
+          title: 'Supprimer cet ami ?',
+          message: 'Cette action retirera cet ami de ta liste.',
+          confirmLabel: 'Supprimer',
+          cancelLabel: 'Annuler',
+          type: 'error'
+        });
+
+        if (confirmed) {
           try {
             const result = await ipcRenderer.invoke('remove-friend', parseInt(btn.dataset.removeFriend));
             if (result.success) {
               await this.loadData();
               this.render();
               this.setupMainEvents();
+              this.ui.showToast({
+                title: 'Ami supprime',
+                message: 'La liste d amis a ete mise a jour.',
+                type: 'success'
+              });
             }
           } catch (error) {
             alert('Erreur: ' + error.message);
@@ -3658,16 +4027,30 @@ renderMainLayout() {
     // ✅ PROTECTION: Éviter les doubles lancements
     if (this.isLaunching) {
       console.warn('⚠️ Launch already in progress, ignored');
+      this.ui.showToast({
+        title: 'Lancement deja en cours',
+        message: 'Patiente une seconde, Minecraft est deja en train de demarrer.',
+        type: 'info'
+      });
       return;
     }
 
     const launchBtn = document.getElementById('launch-btn');
-    if (!launchBtn || !this.selectedProfile) return;
+    if (!this.selectedProfile) {
+      this.ui.showToast({
+        title: 'Aucun profil selectionne',
+        message: 'Choisis un profil avant de lancer Minecraft.',
+        type: 'error'
+      });
+      return;
+    }
 
     this.isLaunching = true;
-    const originalText = launchBtn.innerHTML;
-    launchBtn.disabled = true;
-    launchBtn.innerHTML = '<span style="font-size: 20px;">⏳</span> Lancement en cours...';
+    const originalText = launchBtn?.innerHTML || `${icons.zap} Lancer Minecraft`;
+    if (launchBtn) {
+      launchBtn.disabled = true;
+      launchBtn.innerHTML = '<span style="font-size: 20px;">⏳</span> Lancement en cours...';
+    }
 
     try {
       let targetServer = serverIP;
@@ -3675,27 +4058,56 @@ renderMainLayout() {
         const s = String(this.settings.defaultServer).trim();
         if (s) targetServer = s;
       }
-      const result = await ipcRenderer.invoke('launch-minecraft', this.selectedProfile, targetServer);
+      const activeLaunchLoader = this.getActiveLaunchLoader(this.selectedProfile?.version);
+      const launchProfile = {
+        ...this.selectedProfile,
+        loader: activeLaunchLoader,
+        forceVanillaLaunch: activeLaunchLoader === 'vanilla'
+      };
+      const result = await ipcRenderer.invoke('launch-minecraft', launchProfile, targetServer);
       
       if (!result.success) {
-        launchBtn.disabled = false;
-        launchBtn.innerHTML = originalText;
+        if (launchBtn) {
+          launchBtn.disabled = false;
+          launchBtn.innerHTML = originalText;
+        }
         this.isLaunching = false;
         alert('Erreur: ' + result.error);
         return;
       }
 
-      launchBtn.innerHTML = '<span style="font-size: 20px;">✓</span> Minecraft lancé !';
-      
+      if (launchBtn) {
+        launchBtn.disabled = true;
+        launchBtn.innerHTML = '<span style="font-size: 20px;">✓</span> Minecraft lancé !';
+        launchBtn.style.opacity = '0.6';
+        launchBtn.style.cursor = 'not-allowed';
+      }
+      this.isLaunching = true; // Garder cet état pour empêcher les doubles clics
+      this.ui.showToast({
+        title: 'Minecraft lancé',
+        message: targetServer ? `Connexion à ${targetServer} en cours.` : 'Le jeu a bien été démarré.',
+        type: 'success'
+      });
+
+      // Garder le bouton grisé pendant 5 secondes pour éviter de relancer trop vite
       setTimeout(() => {
-        launchBtn.disabled = false;
-        launchBtn.innerHTML = originalText;
+        const currentLaunchBtn = document.getElementById('launch-btn');
+        if (currentLaunchBtn) {
+          currentLaunchBtn.disabled = false;
+          currentLaunchBtn.innerHTML = originalText;
+          currentLaunchBtn.style.opacity = '1';
+          currentLaunchBtn.style.cursor = 'pointer';
+        }
         this.isLaunching = false;
-      }, 2000);
+      }, 5000);
 
     } catch (error) {
-      launchBtn.disabled = false;
-      launchBtn.innerHTML = originalText;
+      if (launchBtn) {
+        launchBtn.disabled = false;
+        launchBtn.innerHTML = originalText;
+        launchBtn.style.opacity = '1';
+        launchBtn.style.cursor = 'pointer';
+      }
       this.isLaunching = false;
       alert('Erreur: ' + error.message);
     }
@@ -3729,6 +4141,171 @@ renderMainLayout() {
         </div>
       </div>
     `;
+  }
+
+  setupTexturePacksEvents() {
+    const searchInput = document.getElementById('resourcepack-search-input');
+    const searchButton = document.getElementById('btn-search-resourcepacks');
+    const openFolderButton = document.getElementById('btn-open-resourcepacks-folder');
+    const refreshButton = document.getElementById('btn-refresh-resourcepacks');
+
+    searchButton?.addEventListener('click', () => this.searchTexturePacks());
+    searchInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        this.searchTexturePacks();
+      }
+    });
+    openFolderButton?.addEventListener('click', async () => {
+      const folder = await ipcRenderer.invoke('get-resourcepacks-folder').catch(() => '');
+      if (folder) {
+        ipcRenderer.send('open-folder', folder);
+      }
+    });
+    refreshButton?.addEventListener('click', () => this.render());
+
+    document.querySelectorAll('.btn-delete-resourcepack').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await this.deleteTexturePack(button.dataset.packPath, button.dataset.packName);
+      });
+    });
+
+    document.querySelectorAll('.resourcepack-item').forEach((item) => {
+      item.addEventListener('click', async () => {
+        await this.showTexturePackDetails(item);
+      });
+    });
+  }
+
+  async showTexturePackDetails(packItem) {
+    const details = [
+      `Nom : ${packItem.dataset.packName || 'Inconnu'}`,
+      `Fichier : ${packItem.dataset.fileName || 'Inconnu'}`,
+      `Type : ${packItem.dataset.packType === 'folder' ? 'Dossier' : 'Archive'}`,
+      `Taille : ${packItem.dataset.packSize || 'N/A'}`,
+      `Ajoute le : ${packItem.dataset.importedAt ? new Date(packItem.dataset.importedAt).toLocaleString('fr-FR') : 'Inconnu'}`,
+      `Chemin : ${packItem.dataset.packPath || 'Inconnu'}`
+    ];
+
+    await this.ui.showDialog({
+      title: packItem.dataset.packName || 'Details du texture pack',
+      message: 'Informations disponibles pour ce texture pack.',
+      details,
+      type: 'info'
+    });
+  }
+
+  async deleteTexturePack(packPath, packName = 'ce texture pack') {
+    const confirmed = await this.ui.showConfirm({
+      title: 'Supprimer ce texture pack ?',
+      message: `${packName} sera retire du dossier resourcepacks.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      type: 'error'
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await ipcRenderer.invoke('delete-resourcepack', packPath);
+    if (result?.success) {
+      this.ui.showToast({
+        title: 'Texture pack supprime',
+        message: `${packName} a ete supprime avec succes.`,
+        type: 'success'
+      });
+      await this.render();
+      return;
+    }
+
+    this.ui.showToast({
+      title: 'Suppression impossible',
+      message: result?.message || 'Impossible de supprimer ce texture pack.',
+      type: 'error'
+    });
+  }
+
+  async searchTexturePacks() {
+    const input = document.getElementById('resourcepack-search-input');
+    const resultsContainer = document.getElementById('resourcepacks-results');
+    if (!input || !resultsContainer) return;
+
+    const query = input.value.trim();
+    if (!query) {
+      this.ui.showToast({
+        title: 'Recherche vide',
+        message: 'Entrez un nom de texture pack.',
+        type: 'info'
+      });
+      return;
+    }
+
+    resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Recherche en cours...</p>';
+
+    try {
+      const gameVersion = this.selectedProfile?.version || '';
+      const facets = encodeURIComponent(JSON.stringify([['project_type:resourcepack']]));
+      const versionParam = gameVersion ? `&versions=${encodeURIComponent(JSON.stringify([gameVersion]))}` : '';
+      const response = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=12&facets=${facets}${versionParam}`);
+      const data = await response.json();
+
+      if (!data.hits || data.hits.length === 0) {
+        resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Aucun texture pack trouve</p>';
+        return;
+      }
+
+      resultsContainer.innerHTML = data.hits.map((pack) => `
+        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 4px;">${this.escapeHtml(pack.title)}</div>
+            <div style="color: #94a3b8; font-size: 13px; margin-bottom: 6px;">${this.escapeHtml(pack.description || 'Aucune description')}</div>
+            <div style="color: #6366f1; font-size: 12px;">Téléchargements : ${(pack.downloads || 0).toLocaleString()}</div>
+          </div>
+          <button class="btn-download-resourcepack" data-pack-id="${this.escapeHtml(pack.project_id || pack.slug)}" data-pack-name="${this.escapeHtml(pack.title)}" style="background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; padding: 10px 14px; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; white-space: nowrap;">Télécharger</button>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.btn-download-resourcepack').forEach((button) => {
+        button.addEventListener('click', async () => {
+          await this.downloadTexturePack(button.dataset.packId, button.dataset.packName);
+        });
+      });
+    } catch (error) {
+      console.error('Erreur recherche texture packs:', error);
+      resultsContainer.innerHTML = '<p style="color: #ef4444; text-align: center;">Erreur pendant la recherche.</p>';
+    }
+  }
+
+  async downloadTexturePack(projectId, packName) {
+    try {
+      const result = await ipcRenderer.invoke('download-modrinth-resourcepack', projectId, packName, {
+        gameVersion: this.selectedProfile?.version
+      });
+
+      if (result?.success) {
+        await this.render();
+        await this.ui.showDialog({
+          title: 'Texture pack telecharge',
+          message: result.message || `${packName} a ete telecharge avec succes.`,
+          type: 'success',
+          details: result.filePath ? [`Fichier: ${result.filePath}`] : []
+        });
+      } else {
+        this.ui.showToast({
+          title: 'Telechargement impossible',
+          message: result?.message || 'Erreur inconnue',
+          type: 'error'
+        });
+      }
+    } catch (error) {
+      this.ui.showToast({
+        title: 'Erreur de telechargement',
+        message: error.message,
+        type: 'error'
+      });
+    }
   }
 
   // ✅ SYSTÈME DE THÈME PERSONNALISÉ
@@ -3810,6 +4387,112 @@ renderMainLayout() {
     localStorage.setItem('craftlauncher-theme', this.theme);
     if (this.theme === 'custom') {
       localStorage.setItem('craftlauncher-custom-theme', JSON.stringify(this.customTheme));
+    }
+  }
+
+  // ✅ CHARGER LES ACTUALITÉS DYNAMIQUES
+  async loadNews() {
+    try {
+      const result = await ipcRenderer.invoke('get-featured-news');
+      if (result.success) {
+        this.news = result.news;
+        console.log(`📰 ${this.news.length} actualités chargées`);
+      } else {
+        console.warn('⚠️ Impossible de charger les actualités');
+        this.news = [];
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement actualités:', error);
+      this.news = [];
+    }
+  }
+
+  // ✅ AFFICHER LES DÉTAILS D'UNE ACTUALITÉ
+  async showNewsDetail(newsId) {
+    try {
+      const result = await ipcRenderer.invoke('get-news-by-id', newsId);
+      if (result.success) {
+        const news = result.news;
+        const modalHTML = `
+          <div id="news-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000; animation: fadeIn 0.3s;">
+            <div style="background: #0f172a; border-radius: 16px; max-width: 800px; max-height: 90vh; overflow-y: auto; border: 1px solid rgba(99, 102, 241, 0.2); position: relative; animation: slideUp 0.3s;" onclick="event.stopPropagation()">
+              <div style="position: sticky; top: 0; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); padding: 20px; border-bottom: 1px solid rgba(99, 102, 241, 0.2); display: flex; align-items: center; justify-content: space-between;">
+                <h2 style="margin: 0; color: #e2e8f0; display: flex; align-items: center; gap: 12px;">
+                  <span style="font-size: 28px;">${news.image || '📰'}</span>
+                  ${news.title}
+                </h2>
+                <button style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.3); color: #cbd5e1; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 20px; transition: all 0.3s;" onclick="document.getElementById('news-modal').remove()">×</button>
+              </div>
+              
+              <div style="padding: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(99, 102, 241, 0.1);">
+                  <div>
+                    <div style="color: #cbd5e1; font-size: 14px;">
+                      📅 ${new Date(news.date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <span style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                      ${news.category}
+                    </span>
+                    ${news.featured ? '<span style="background: rgba(255, 193, 7, 0.2); color: #fcd34d; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">★ EN VEDETTE</span>' : ''}
+                  </div>
+                </div>
+
+                <div style="color: #cbd5e1; line-height: 1.8; white-space: pre-line; margin-bottom: 24px;">
+                  ${news.content}
+                </div>
+
+                <div style="background: rgba(99, 102, 241, 0.05); padding: 16px; border-radius: 8px; border-left: 4px solid rgba(99, 102, 241, 0.3);">
+                  <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                    ℹ️ Pour plus d'informations, consultez nos réseaux sociaux ou notre site officiel.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <style>
+              @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+              }
+              @keyframes slideUp {
+                from { transform: translateY(20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+              }
+              #news-modal::-webkit-scrollbar {
+                width: 8px;
+              }
+              #news-modal::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              #news-modal::-webkit-scrollbar-thumb {
+                background: rgba(99, 102, 241, 0.3);
+                border-radius: 4px;
+              }
+              #news-modal::-webkit-scrollbar-thumb:hover {
+                background: rgba(99, 102, 241, 0.5);
+              }
+            </style>
+          </div>
+        `;
+        
+
+        const modal = document.createElement('div');
+        modal.innerHTML = modalHTML;
+        document.body.appendChild(modal.firstElementChild);
+        
+        // Fermer la modal en cliquant en dehors
+        document.getElementById('news-modal').addEventListener('click', (e) => {
+          if (e.target.id === 'news-modal') {
+            document.getElementById('news-modal').remove();
+          }
+        });
+        
+        console.log(`📰 Actualité ouverte: ${news.title}`);
+      }
+    } catch (error) {
+      console.error('❌ Erreur affichage détail actualité:', error);
     }
   }
 
@@ -4018,5 +4701,5 @@ renderMainLayout() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  new CraftLauncherApp();
+  window.app = new CraftLauncherApp();
 });

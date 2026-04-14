@@ -183,7 +183,11 @@ class LauncherFeatures {
     const version = this.getInputValue('profile-version-select');
 
     if (!name) {
-      alert('Entrez un nom pour le profil');
+      this.app.ui.showToast({
+        title: 'Nom requis',
+        message: 'Entre un nom pour creer le profil.',
+        type: 'error'
+      });
       return;
     }
 
@@ -192,22 +196,44 @@ class LauncherFeatures {
     if (result.success) {
       await this.refreshProfiles();
       this.hideModal('profile-modal');
+      this.app.ui.showToast({
+        title: 'Profil cree',
+        message: `${name} est maintenant disponible dans le launcher.`,
+        type: 'success'
+      });
     }
   }
 
   async handleProfileDelete(target) {
     const id = parseInt(target.getAttribute('data-id'));
-    
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce profil ?')) return;
+
+    const confirmed = await this.app.ui.showConfirm({
+      title: 'Supprimer ce profil ?',
+      message: 'Le profil sera retire du launcher.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      type: 'error'
+    });
+    if (!confirmed) return;
 
     await ipcRenderer.invoke('delete-profile', id);
     await this.refreshProfiles();
+    this.app.ui.showToast({
+      title: 'Profil supprime',
+      message: 'La liste des profils a ete mise a jour.',
+      type: 'success'
+    });
   }
 
   async handleProfileDuplicate(target) {
     const id = parseInt(target.getAttribute('data-id'));
     await ipcRenderer.invoke('duplicate-profile', id);
     await this.refreshProfiles();
+    this.app.ui.showToast({
+      title: 'Profil duplique',
+      message: 'Une copie du profil a ete creee.',
+      type: 'success'
+    });
   }
 
   /**
