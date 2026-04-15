@@ -17,6 +17,9 @@ class ModsManager {
     this.modsFolder = '';
     this.toastContainerId = 'mods-toast-container';
     this.modalId = 'mods-feedback-modal';
+    this.autoRefreshInterval = null;
+    this.autoRefreshInFlight = false;
+    this.lastModsSignature = '';
     this.filterState = {
       query: '',
       status: 'all',
@@ -91,6 +94,63 @@ class ModsManager {
     return Math.round(value * (multipliers[unit] || 1));
   }
 
+  buildModsSignature(mods = []) {
+    return (Array.isArray(mods) ? mods : [])
+      .map((mod) => [
+        mod?.fileName || '',
+        mod?.path || '',
+        mod?.enabled ? '1' : '0',
+        mod?.size || '',
+        mod?.importedAt || ''
+      ].join('|'))
+      .sort()
+      .join('||');
+  }
+
+  startAutoRefresh() {
+    this.stopAutoRefresh();
+    this.autoRefreshInterval = setInterval(() => {
+      void this.checkForExternalModChanges();
+    }, 2500);
+  }
+
+  stopAutoRefresh() {
+    if (this.autoRefreshInterval) {
+      clearInterval(this.autoRefreshInterval);
+      this.autoRefreshInterval = null;
+    }
+  }
+
+  async checkForExternalModChanges() {
+    if (this.autoRefreshInFlight) {
+      return;
+    }
+
+    if (this.app.currentView !== 'mods') {
+      this.stopAutoRefresh();
+      return;
+    }
+
+    if (document.getElementById('modrinth-modal')) {
+      return;
+    }
+
+    this.autoRefreshInFlight = true;
+    try {
+      const mods = await ipcRenderer.invoke('get-installed-mods');
+      const nextSignature = this.buildModsSignature(mods);
+      if (nextSignature && nextSignature !== this.lastModsSignature) {
+        this.lastModsSignature = nextSignature;
+        await this.rerenderModsView();
+      }
+    } catch (error) {
+      console.warn('Detection automatique des mods indisponible:', error);
+    } finally {
+      this.autoRefreshInFlight = false;
+    }
+  }
+
+
   /**
    * ✅ 1. RENDRE LE GESTIONNAIRE DE MODS
    */
@@ -119,6 +179,7 @@ class ModsManager {
     const selectedProfile = this.ensureSelectedModProfile();
     const selectedLoader = this.getProfileLoader(selectedProfile);
     const enabledModsCount = mods.filter(mod => mod.enabled).length;
+    this.lastModsSignature = this.buildModsSignature(mods);
 
     return `
       <div class="view-container" style="padding: 40px;">
@@ -286,6 +347,7 @@ class ModsManager {
     document.addEventListener('click', this.deleteHandler);
     document.addEventListener('change', this.changeHandler);
     this.applyLocalFilters();
+    this.startAutoRefresh();
   }
 
   /**
@@ -1057,6 +1119,7 @@ class ModsManager {
    * ✅ 13. NETTOYER
    */
   cleanup() {
+    this.stopAutoRefresh();
     if (this.deleteHandler) {
       document.removeEventListener('click', this.deleteHandler);
     }

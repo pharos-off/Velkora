@@ -754,7 +754,7 @@ class MinecraftLauncher {
 
         const response = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest.json', {
           signal: controller.signal,
-          headers: { 'User-Agent': 'CraftLauncher/3.0' }
+          headers: { 'User-Agent': 'VellkoraMC/3.0' }
         });
 
         clearTimeout(timeout);

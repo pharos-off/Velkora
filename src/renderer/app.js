@@ -1243,13 +1243,10 @@ renderMainLayout() {
     const username = this.authData?.username || '';
     const srcs = [];
     if (this.authData?.type === 'microsoft' && uuid) {
-      srcs.push(`https://crafatar.com/avatars/${uuid}?size=128&overlay=true`);
-      srcs.push(`https://mc-heads.net/avatar/${uuid}/128`);
       srcs.push(`https://minotar.net/avatar/${uuid}/128`);
     }
     if (username) {
       const u = encodeURIComponent(username);
-      srcs.push(`https://mc-heads.net/avatar/${u}/128`);
       srcs.push(`https://minotar.net/avatar/${u}/128`);
     }
     const firstSrc = srcs[0] || (this.playerHead?.success ? this.playerHead.url : this.fallbackAvatar);
@@ -3368,7 +3365,7 @@ renderMainLayout() {
 
     // ✅ CONTACT PARTENAIRES
     document.getElementById('contact-partner-btn')?.addEventListener('click', () => {
-      require('electron').shell.openExternal('mailto:contact.craftlauncher@gmail.com?subject=Devenir Partenaire');
+      require('electron').shell.openExternal('mailto:contact.vellkoramc@gmail.com?subject=Devenir Partenaire');
     });
 
     // ✅ NETTOYER LES ANCIENS LISTENERS AVANT D'EN AJOUTER DE NOUVEAUX
@@ -4310,8 +4307,8 @@ renderMainLayout() {
 
   // ✅ SYSTÈME DE THÈME PERSONNALISÉ
   loadTheme() {
-    const savedTheme = localStorage.getItem('craftlauncher-theme') || 'normal';
-    const savedCustom = localStorage.getItem('craftlauncher-custom-theme');
+    const savedTheme = localStorage.getItem('VellkoraMC-theme') || 'normal';
+    const savedCustom = localStorage.getItem('VellkoraMC-custom-theme');
     
     this.theme = savedTheme;
     if (savedCustom) {
@@ -4384,9 +4381,9 @@ renderMainLayout() {
   }
 
   saveTheme() {
-    localStorage.setItem('craftlauncher-theme', this.theme);
+    localStorage.setItem('VellkoraMC-theme', this.theme);
     if (this.theme === 'custom') {
-      localStorage.setItem('craftlauncher-custom-theme', JSON.stringify(this.customTheme));
+      localStorage.setItem('VellkoraMC-custom-theme', JSON.stringify(this.customTheme));
     }
   }
 

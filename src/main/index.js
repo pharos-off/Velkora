@@ -16,8 +16,8 @@ const fs = require('fs');
 const os = require('os');
 
 
-const LAUNCHER_VERSION = '3.9.2';
-const LAUNCHER_BUILD = '20260413';
+const LAUNCHER_VERSION = '4.0.2';
+const LAUNCHER_BUILD = '20260415';
 const LAUNCHER_NAME = 'VelkoraMC';
 const __emojiMap = {
   '✅': '[OK]',
@@ -641,7 +641,7 @@ function createTray() {
     const { Tray, Menu } = require('electron');
     const iconPath = path.join(__dirname, "../../assets/icon.ico");
     tray = new Tray(iconPath);
-    tray.setToolTip(LAUNCHER_NAME || 'CraftLauncher');
+    tray.setToolTip(LAUNCHER_NAME || 'VellkoraMC');
     const contextMenu = Menu.buildFromTemplate([
       {
         label: 'Ouvrir',
@@ -2289,18 +2289,18 @@ ipcMain.handle('get-player-head', async (event, username) => {
     const authData = store.get('authData', null);
     const uuid = authData?.uuid;
     
-    // ✅ PRIORITÉ: mc-heads.net est plus stable que crafatar.com qui est souvent down
+    // Crafatar peut aussi renvoyer une erreur 521 selon le moment, on reste sur Minotar.
+    if (uuid && String(uuid).length >= 32) {
+      return { success: true, url: `https://minotar.net/avatar/${uuid}/128` };
+    }
+
     if (username) {
       const u = encodeURIComponent(username);
-      return { success: true, url: `https://mc-heads.net/avatar/${u}/128` };
-    }
-    
-    if (uuid && String(uuid).length >= 32) {
-      return { success: true, url: `https://mc-heads.net/avatar/${uuid}/128` };
+      return { success: true, url: `https://minotar.net/avatar/${u}/128` };
     }
     
     // Fallback: avatar générique
-    return { success: true, url: `https://mc-heads.net/avatar/Steve/128` };
+    return { success: true, url: `https://minotar.net/avatar/Steve/128` };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -2599,7 +2599,7 @@ async function checkUpdatesAndInstall() {
     
     // Récupérer les releases
     const response = await fetch('https://api.github.com/repos/pharos-off/VelkoraMC/releases', {
-      headers: { 'User-Agent': 'CraftLauncher' }
+      headers: { 'User-Agent': 'VellkoraMC' }
     });
     
     if (!response.ok) {
@@ -2858,48 +2858,120 @@ function saveModsDB(mods) {
   }
 }
 
+function normalizeStoredModFileName(fileName) {
+  const rawName = String(fileName || '').trim();
+  if (!rawName) return '';
+  return rawName.endsWith('.disabled')
+    ? rawName.slice(0, -'.disabled'.length)
+    : rawName;
+}
+
+function listModsFromDirectory() {
+  const modsDir = getModsDir();
+  if (!fs.existsSync(modsDir)) {
+    fs.mkdirSync(modsDir, { recursive: true });
+  }
+
+  return fs.readdirSync(modsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(jar|jar\.disabled)$/i.test(entry.name))
+    .map((entry, index) => {
+      const actualName = entry.name;
+      const fileName = normalizeStoredModFileName(actualName);
+      const filePath = path.join(modsDir, actualName);
+      const stat = fs.statSync(filePath);
+
+      return {
+        id: `fs-${stat.mtimeMs}-${index}-${fileName}`,
+        name: fileName.replace(/\.jar$/i, '').replace(/\s*\(\d+\)$/, ''),
+        fileName,
+        actualFileName: actualName,
+        path: filePath,
+        size: formatFileSize(stat.size),
+        sizeBytes: stat.size,
+        enabled: !actualName.endsWith('.disabled'),
+        importedAt: stat.mtime.toISOString()
+      };
+    })
+    .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
+}
+
 function synchronizeModsDB(mods) {
   try {
-    const modsDir = getModsDir();
-    if (!fs.existsSync(modsDir)) {
-      fs.mkdirSync(modsDir, { recursive: true });
-    }
-
+    const diskMods = listModsFromDirectory();
+    const diskModsByFileName = new Map(
+      diskMods.map((mod) => [String(mod.fileName || '').toLowerCase(), mod])
+    );
     let changed = false;
-    const normalizedMods = mods.map((mod) => {
-      if (!mod || typeof mod !== 'object') return mod;
+    const seenFileNames = new Set();
+    const normalizedMods = [];
 
-      const currentPath = String(mod.path || '').trim();
-      const fallbackName = String(mod.fileName || '').trim();
-      const effectiveName = currentPath
-        ? path.basename(currentPath)
-        : fallbackName;
-
-      if (!effectiveName) {
-        return mod;
+    for (const mod of mods) {
+      if (!mod || typeof mod !== 'object') {
+        changed = true;
+        continue;
       }
 
-      const targetPath = path.join(modsDir, effectiveName);
-      const normalizedCurrentPath = currentPath ? path.normalize(currentPath) : '';
-      const normalizedTargetPath = path.normalize(targetPath);
+      const fallbackName = normalizeStoredModFileName(mod.fileName || path.basename(String(mod.path || '').trim()));
+      if (!fallbackName) {
+        changed = true;
+        continue;
+      }
 
-      if (normalizedCurrentPath !== normalizedTargetPath) {
-        try {
-          if (currentPath && fs.existsSync(currentPath) && !fs.existsSync(targetPath)) {
-            fs.renameSync(currentPath, targetPath);
-          }
-          mod.path = targetPath;
-          changed = true;
-        } catch (moveError) {
-          console.warn(`Impossible de migrer le mod ${effectiveName}:`, moveError.message);
-        }
-      } else if (!currentPath) {
-        mod.path = targetPath;
+      const fileKey = fallbackName.toLowerCase();
+      if (seenFileNames.has(fileKey)) {
+        changed = true;
+        continue;
+      }
+
+      const diskMod = diskModsByFileName.get(fileKey);
+      if (!diskMod) {
+        changed = true;
+        continue;
+      }
+
+      seenFileNames.add(fileKey);
+      diskModsByFileName.delete(fileKey);
+
+      const nextMod = {
+        ...mod,
+        fileName: diskMod.fileName,
+        path: diskMod.path,
+        size: diskMod.size,
+        enabled: diskMod.enabled,
+        importedAt: mod.importedAt || diskMod.importedAt
+      };
+
+      if (!nextMod.name) {
+        nextMod.name = diskMod.name;
+      }
+
+      const changedFields =
+        nextMod.fileName !== mod.fileName ||
+        nextMod.path !== mod.path ||
+        nextMod.size !== mod.size ||
+        nextMod.enabled !== mod.enabled;
+
+      if (changedFields) {
         changed = true;
       }
 
-      return mod;
-    });
+      normalizedMods.push(nextMod);
+    }
+
+    for (const diskMod of diskModsByFileName.values()) {
+      changed = true;
+      normalizedMods.push({
+        id: Date.now() + Math.floor(Math.random() * 100000),
+        name: diskMod.name,
+        fileName: diskMod.fileName,
+        version: 'Detecte automatiquement',
+        size: diskMod.size,
+        enabled: diskMod.enabled,
+        importedAt: diskMod.importedAt,
+        path: diskMod.path,
+        detectedAutomatically: true
+      });
+    }
 
     if (changed) {
       saveModsDB(normalizedMods);
