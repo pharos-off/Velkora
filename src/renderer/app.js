@@ -4,6 +4,7 @@ const ModsManager = require('./ModsManager.js');
 const UIFeedback = require('./ui-feedback.js');
 const LauncherVersion = require('../main/launcher-version.js');
 const KeyboardShortcuts = require('../main/keyboard-shortcuts.js');
+const { icons: lucideIcons } = require('./lucide-icons');
 //const MusicPlayer = require('./radio-player.js');
 
 // ✅ STUB GLOBAL POUR ÉVITER LES ERREURS DE TIMING
@@ -217,7 +218,7 @@ class CraftLauncherApp {
 
     this.deferredDataPromise = Promise.all([
       this.loadPlayerHead(),
-      this.loadNews()
+      // this.loadNews() - Actualités désactivées
     ]).finally(() => {
       this.deferredDataPromise = null;
       if (this.currentView === 'main' || this.currentView === 'news') {
@@ -723,8 +724,8 @@ renderMainLayout() {
               <button class="menu-item ${this.currentView === 'partners' ? 'active' : ''}" data-view="partners">
                 <span class="menu-icon"><i class="bi bi-star"></i></span> Partenaires
               </button>
-              <button class="menu-item ${this.currentView === 'shop' ? 'active' : ''}" data-view="shop">
-                <span class="menu-icon"><i class="bi bi-bag-check"></i></span> Shop
+              <button class="menu-item ${this.currentView === 'screenshots' ? 'active' : ''}" data-view="screenshots">
+                <span class="menu-icon"><i class="bi bi-images"></i></span> Screenshots & Sauvegardes
               </button>
             </div>
 
@@ -732,17 +733,11 @@ renderMainLayout() {
               <button class="menu-item ${this.currentView === 'stats' ? 'active' : ''}" data-view="stats" disabled style="opacity: 0.5; cursor: not-allowed;">
                 <span class="menu-icon"><i class="bi bi-bar-chart"></i></span> Statistiques
               </button>
-              <button class="menu-item ${this.currentView === 'news' ? 'active' : ''}" data-view="news">
-                <span class="menu-icon"><i class="bi bi-newspaper"></i></span> Actualités
-              </button>
               <button class="menu-item ${this.currentView === 'versions' ? 'active' : ''}" data-view="versions">
                 <span class="menu-icon"><i class="bi bi-search"></i></span> Versions
               </button>
               <button class="menu-item ${this.currentView === 'mods' ? 'active' : ''}" data-view="mods">
                 <span class="menu-icon"><i class="bi bi-puzzle"></i></span> Mods
-              </button>
-              <button class="menu-item ${['resourcepacks', 'ressourcespacks'].includes(this.currentView) ? 'active' : ''}" data-view="ressourcespacks">
-                <span class="menu-icon"><i class="bi bi-image"></i></span> Texture Packs
               </button>
               <button class="menu-item ${this.currentView === 'theme' ? 'active' : ''}" data-view="theme">
                 <span class="menu-icon"><i class="bi bi-palette"></i></span> Thème
@@ -1147,7 +1142,7 @@ renderMainLayout() {
       case 'friends': return this.renderFriendsView();
       case 'versions': return this.renderVersionsView();
       case 'partners': return this.renderPartnersView();
-      case 'shop': return this.renderShopView();
+      case 'screenshots': return this.renderScreenshotsView();
       case 'stats': return await this.renderStatsView();
       case 'news': return this.renderNewsView();
       case 'servers': return this.renderServersView();
@@ -1156,7 +1151,13 @@ renderMainLayout() {
         setTimeout(() => this.modsManager.setupEvents(), 100);
         return modsContent;  // ← RETOURNER LE CONTENU
       case 'resourcepacks':
-        return await this.renderTexturePacksView();
+      case 'ressourcespacks':
+        // ✅ Rediriger vers la vue mods avec le sous-onglet texture packs
+        this.currentView = 'mods';
+        this.modsManager.setCurrentCategory('texturepacks');
+        const packContent = await this.modsManager.render();
+        setTimeout(() => this.modsManager.setupEvents(), 100);
+        return packContent;
       case 'theme': return this.renderThemeSettings();
       case 'help': return this.renderHelp();
       default: return '';
@@ -1507,34 +1508,6 @@ renderMainLayout() {
             </div>
           </div>
 
-          <!-- Actualités -->
-          <div class="info-card news-card">
-            <div class="card-header">
-              <span class="card-icon">${icons.newspaper}</span>
-              <h3>Dernières actualités</h3>
-              <a id="view-all-news-btn" href="#" style="margin-left: auto; color: #6366f1; text-decoration: none; font-size: 12px; font-weight: 600; cursor: pointer;">Voir toutes →</a>
-            </div>
-            ${this.news && this.news.length > 0 ? 
-              this.news.slice(0, 3).map(news => `
-                <div class="news-card-item" data-news-id="${news.id}" style="background: rgba(99, 102, 241, 0.05); border-left: 2px solid #6366f1; padding: 8px; margin: 6px 0; cursor: pointer; transition: all 0.3s; border-radius: 6px;">
-                  <div style="display: flex; align-items: flex-start; gap: 8px;">
-                    <span style="font-size: 18px; flex-shrink: 0;">${news.image || '📰'}</span>
-                    <div style="flex: 1; min-width: 0;">
-                      <div class="news-title" style="color: #e2e8f0; font-weight: 600; font-size: 12px; margin-bottom: 2px;">${news.title}</div>
-                      <div class="news-date" style="font-size: 10px; color: #94a3b8; margin-bottom: 4px;">
-                        ${new Date(news.date).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })}
-                      </div>
-                      <div class="news-excerpt" style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">${news.excerpt}</div>
-                    </div>
-                  </div>
-                </div>
-              `).join('')
-              : `
-              <div style="text-align: center; padding: 20px; color: #9ca3af;">
-                <p>📰 Pas d'actualités disponibles</p>
-              </div>
-            `}
-          </div>
         </div>
       </div>
 
@@ -2104,7 +2077,7 @@ renderMainLayout() {
                     ${f.online ? '🟢 En ligne' : '⚫ Hors ligne'}
                   </div>
                 </div>
-                <button class="btn-icon" data-remove-friend="${f.id}" style="color: #ef4444;">🗑️</button>
+                <button class="btn-icon" data-remove-friend="${f.id}" style="color: #ef4444;">${lucideIcons.trash3}</button>
               </div>
             `).join('')}
           </div>
@@ -2294,7 +2267,7 @@ renderMainLayout() {
                   🌐 Visiter
                 </button>
                 <button class="btn-partner" data-join-partner="${partner.joinUrl}" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                  🎮 Rejoindre
+                  Rejoindre
                 </button>
               </div>
             </div>
@@ -2508,410 +2481,198 @@ renderMainLayout() {
     `;
   }
 
-  renderShopView() {
-    return `
-      <div class="view-container">
-        <h1 class="view-title">Shop ${LauncherVersion.getName()}</h1>
-        <p style="color: #64748b; margin-bottom: 30px; text-align: center;">Découvrez nos produits et améliorations</p>
+  renderScreenshotsView() {
+    const html = `
+      <div class="view-container" style="padding: 40px;">
+        <!-- Modal pour visualiser les screenshots -->
+        <div id="screenshot-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 1000; align-items: center; justify-content: center; flex-direction: column;">
+          <button id="modal-close-btn" style="position: absolute; top: 20px; right: 20px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 14px;">✕ Fermer</button>
+          <div style="display: flex; gap: 20px; align-items: center; max-width: 90vw; max-height: 80vh;">
+            <button id="modal-prev-btn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; width: 50px; height: 50px; font-size: 20px; border-radius: 8px; cursor: pointer;">◀</button>
+            <img id="modal-image" src="" style="max-width: 75vw; max-height: 75vh; border-radius: 8px; object-fit: contain;">
+            <button id="modal-next-btn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; width: 50px; height: 50px; font-size: 20px; border-radius: 8px; cursor: pointer;">▶</button>
+          </div>
+          <div id="modal-info" style="color: #cbd5e1; margin-top: 20px; text-align: center; font-size: 14px;"></div>
+        </div>
 
-        <!-- ✅ MINECRAFT OFFICIAL -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #6366f1;">●</span> Éditions Minecraft
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card">
-              <div class="shop-icon">🎮</div>
-              <h3>Minecraft Java Edition</h3>
-              <p>Le jeu classique avec mods et skins personnalisés</p>
-              <div class="shop-price">26,95 €</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://www.minecraft.net/fr-fr/store/minecraft-java-bedrock-edition-pc')" style="width: 100%;">
-                ⚡ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🪟</div>
-              <h3>Minecraft Bedrock Edition</h3>
-              <p>Version cross-platform pour tous les appareils</p>
-              <div class="shop-price">19,99 €</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://www.minecraft.net/fr-fr/store')" style="width: 100%;">
-                ⚡ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">💎</div>
-              <h3>Java + Bedrock Edition</h3>
-              <p>Les deux versions pour le prix d'une</p>
-              <div class="shop-price">39,99 €</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://www.minecraft.net/fr-fr/store/minecraft-java-bedrock-edition-pc')" style="width: 100%;">
-                ⚡ Acheter
-              </button>
-            </div>
+        <!-- Screenshots Section -->
+        <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 16px; padding: 28px; margin-bottom: 30px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+            <span style="font-size: 24px;">📸</span>
+            <h2 style="font-size: 20px; color: #e2e8f0; margin: 0; font-weight: 700;">Screenshots</h2>
+          </div>
+          <p style="color: #cbd5e1; margin-bottom: 20px; line-height: 1.5;">Visualisez et organisez tous vos screenshots Minecraft. Cliquez sur une vignette pour l'agrandir.</p>
+          <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <button id="btn-open-screenshots" class="btn-primary" style="flex: 1; padding: 12px;">
+              <span style="display: inline-flex; width: 18px; height: 18px; margin-right: 8px;">📂</span> Ouvrir le dossier
+            </button>
+            <button id="btn-refresh-screenshots" class="btn-secondary" style="flex: 1; padding: 12px;">
+              <span style="display: inline-flex; width: 16px; height: 16px; margin-right: 8px;">🔄</span> Rafraîchir
+            </button>
+          </div>
+          <div id="screenshots-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; min-height: 200px;">
+            <div style="grid-column: 1 / -1; color: #cbd5e1; text-align: center; padding: 40px; color: #94a3b8;">Chargement des screenshots...</div>
+          </div>
+          <div id="screenshots-info" style="padding: 12px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; color: #94a3b8; font-size: 12px;">
+            Chargement...
           </div>
         </div>
 
-        <!-- ✅ REALMS & SERVERS -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #10b981;">●</span> Serveurs & Realms
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card">
-              <div class="shop-icon">🏰</div>
-              <h3>Minecraft Realms Plus</h3>
-              <p>Serveur privé cloud pour vous et vos amis</p>
-              <div class="shop-price">7,99 €/mois</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://www.minecraft.net/fr-fr/realms-plus')" style="width: 100%;">
-                🌐 S'abonner
-              </button>
+          <!-- Saves Section -->
+          <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 16px; padding: 28px; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+              <span style="font-size: 24px;">💾</span>
+              <h2 style="font-size: 20px; color: #e2e8f0; margin: 0; font-weight: 700;">Sauvegardes</h2>
             </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🌐</div>
-              <h3>Serveur Hyperion</h3>
-              <p>Serveur compétitif avec 10k+ joueurs</p>
-              <div class="shop-price">Gratuit</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://hypixel.net')" style="width: 100%;">
-                🌐 Visiter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">⚔️</div>
-              <h3>Serveur Skyblock</h3>
-              <p>Mode de jeu unique avec progression</p>
-              <div class="shop-price">Gratuit</div>
-              <button class="btn-primary" onclick="require('electron').shell.openExternal('https://hypixel.net/forums/')" style="width: 100%;">
-                🌐 Rejoindre
-              </button>
+            <p style="color: #cbd5e1; margin-bottom: 20px; line-height: 1.5;">Gérez toutes vos sauvegardes de mondes Minecraft. Sauvegardez, dupliquez ou supprimez vos mondes facilement avec notre gestionnaire intégré.</p>
+            <button id="btn-open-saves" class="btn-primary" style="width: 100%; margin-bottom: 12px; padding: 14px;">
+              <span style="display: inline-flex; width: 18px; height: 18px; margin-right: 8px;">📂</span> Ouvrir le dossier
+            </button>
+            <button id="btn-refresh-saves" class="btn-secondary" style="width: 100%; padding: 12px;">
+              <span style="display: inline-flex; width: 16px; height: 16px; margin-right: 8px;">🔄</span> Rafraîchir
+            </button>
+            <div id="saves-info" style="margin-top: 20px; padding: 12px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; color: #94a3b8; font-size: 12px;">
+              Chargement...
             </div>
           </div>
-        </div>
-
-        <!-- ✅ LAUNCHER PREMIUM -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #f59e0b;">●</span> ${LauncherVersion.getName()} Premium
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card" style="border: 2px solid #f59e0b;">
-              <div class="shop-icon" style="font-size: 40px;">👑</div>
-              <h3>Premium Mensuel</h3>
-              <p style="color: #fbbf24; font-weight: 600;">Les meilleures fonctionnalités</p>
-              <ul style="text-align: center; color: #9ca3af; font-size: 13px; margin: 15px 0; line-height: 1.8; list-style: none; padding: 0;">
-                <li>✓ Thèmes exclusifs</li>
-                <li>✓ Support prioritaire</li>
-                <li>✓ Mods autorisés illimités</li>
-                <li>✓ Gestion avancée de RAM</li>
-                <li>✓ Snapshots exclusifs</li>
-              </ul>
-              <div class="shop-price">4,99 €/mois</div>
-              <button class="btn-primary" onclick="alert('Premium mensuel - En développement')" style="width: 100%; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;">
-                👑 S'abonner
-              </button>
-            </div>
-
-            <div class="shop-card" style="border: 2px solid #6366f1;">
-              <div class="shop-icon" style="font-size: 40px;">🚀</div>
-              <h3>Premium Annuel</h3>
-              <p style="color: #818cf8; font-weight: 600;">-30% d'économie !</p>
-              <ul style="text-align: center; color: #9ca3af; font-size: 13px; margin: 15px 0; line-height: 1.8; list-style: none; padding: 0;">
-                <li>✓ Tout de Premium</li>
-                <li>✓ Accès anticipé features</li>
-                <li>✓ Statistiques avancées</li>
-                <li>✓ Badge custom</li>
-                <li>✓ Support VIP 24/7</li>
-              </ul>
-              <div class="shop-price">49,99 €/an</div>
-              <button class="btn-primary" onclick="alert('Premium annuel - En développement')" style="width: 100%; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none;">
-                ⚡ S'abonner
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ✅ COSMÉTIQUES & THÈMES -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #ec4899;">●</span> Cosmétiques & Thèmes
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card">
-              <div class="shop-icon">🎨</div>
-              <h3>Pack Thème Sombre Pro</h3>
-              <p>5 thèmes sombres premium exclusifs</p>
-              <div class="shop-price">2,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Thème Sombre Pro - En développement')" style="width: 100%;">
-                ⭐ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🌈</div>
-              <h3>Pack Arc-en-ciel</h3>
-              <p>8 thèmes colorés dynamiques</p>
-              <div class="shop-price">3,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Arc-en-ciel - En développement')" style="width: 100%;">
-                ⭐ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🎭</div>
-              <h3>Pack Neon Cyberpunk</h3>
-              <p>Thèmes futuristes avec animations</p>
-              <div class="shop-price">4,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Neon Cyberpunk - En développement')" style="width: 100%;">
-                ⭐ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">✨</div>
-              <h3>Badge Custom Discord</h3>
-              <p>Badge exclusif pour ton serveur Discord</p>
-              <div class="shop-price">1,99 €</div>
-              <button class="btn-primary" onclick="alert('Badge Custom Discord - En développement')" style="width: 100%;">
-                👑 Obtenir
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🎪</div>
-              <h3>Particle Effects</h3>
-              <p>Effets de particules pour le launcher</p>
-              <div class="shop-price">1,99 €</div>
-              <button class="btn-primary" onclick="alert('Particle Effects - En développement')" style="width: 100%;">
-                ⭐ Acheter
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🔊</div>
-              <h3>Soundpack Premium</h3>
-              <p>Sons exclusifs pour les notifications</p>
-              <div class="shop-price">2,99 €</div>
-              <button class="btn-primary" onclick="alert('Soundpack Premium - En développement')" style="width: 100%;">
-                🔊 Acheter
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ✅ MODS & ADDONS -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #8b5cf6;">●</span> Packs Mods & Addons
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card">
-              <div class="shop-icon">⚙️</div>
-              <h3>Pack Tech & Performance</h3>
-              <p>15+ mods pour optimiser le jeu</p>
-              <div class="shop-price">Gratuit</div>
-              <button class="btn-primary" onclick="alert('Pack Tech & Performance - En développement')" style="width: 100%;">
-                📥 Télécharger
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🏗️</div>
-              <h3>Pack Constructions</h3>
-              <p>20+ mods de build et décoration</p>
-              <div class="shop-price">3,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Constructions - En développement')" style="width: 100%;">
-                📥 Acheter & Installer
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">⚔️</div>
-              <h3>Pack Combat Avancé</h3>
-              <p>Mods pour des combats intenses</p>
-              <div class="shop-price">2,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Combat Avancé - En développement')" style="width: 100%;">
-                ⚡ Acheter & Installer
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🌿</div>
-              <h3>Pack Nature & Biomes</h3>
-              <p>Nouveaux biomes et environnements</p>
-              <div class="shop-price">3,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Nature & Biomes - En développement')" style="width: 100%;">
-                🌿 Acheter & Installer
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🔮</div>
-              <h3>Pack Magie & Surnaturel</h3>
-              <p>Mods magiques et fantastiques</p>
-              <div class="shop-price">4,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Magie & Surnaturel - En développement')" style="width: 100%;">
-                ⭐ Acheter & Installer
-              </button>
-            </div>
-
-            <div class="shop-card">
-              <div class="shop-icon">🚀</div>
-              <h3>Pack Space & Tech</h3>
-              <p>Technologie avancée et espace</p>
-              <div class="shop-price">4,99 €</div>
-              <button class="btn-primary" onclick="alert('Pack Space & Tech - En développement')" style="width: 100%;">
-                ⚡ Acheter & Installer
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ✅ SUPPORTER LE PROJET -->
-        <div style="margin-bottom: 40px;">
-          <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #ef4444;">●</span> Supporter ${LauncherVersion.getName()}
-          </h2>
-          <div class="shop-grid">
-            <div class="shop-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);">
-              <div class="shop-icon">❤️</div>
-              <h3>Petit Don</h3>
-              <p>Soutiens le développement du projet</p>
-              <div class="shop-price">2,99 €</div>
-              <button class="btn-primary" onclick="alert('Petit Don - En développement')" style="width: 100%; background: #ef4444; border: none;">
-                ❤️ Donner
-              </button>
-            </div>
-
-            <div class="shop-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);">
-              <div class="shop-icon">💝</div>
-              <h3>Don Important</h3>
-              <p>Aide au développement et serveurs</p>
-              <div class="shop-price">9,99 €</div>
-              <button class="btn-primary" onclick="alert('Don Important - En développement')" style="width: 100%; background: #f87171; border: none;">
-                ❤️ Donner
-              </button>
-            </div>
-
-            <div class="shop-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);">
-              <div class="shop-icon">👑</div>
-              <h3>Supporter VIP</h3>
-              <p>Merci spécial + avantages lifetime</p>
-              <div class="shop-price">29,99 €</div>
-              <button class="btn-primary" onclick="alert('Supporter VIP - En développement')" style="width: 100%; background: #dc2626; border: none;">
-                👑 Devenir VIP
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ✅ SECTION INFO -->
-        <div style="margin-top: 50px; padding: 25px; background: rgba(26, 31, 58, 0.5); border-radius: 16px; border-left: 4px solid #6366f1; text-align: center;">
-          <h3 style="margin-bottom: 12px; color: #e2e8f0;">💡 À savoir</h3>
-          <ul style="color: #9ca3af; line-height: 1.8; font-size: 14px; list-style: none; padding: 0;">
-            <li>✓ Tous les achats premium incluent le support prioritaire</li>
-            <li>✓ Les abonnements peuvent être annulés à tout moment</li>
-            <li>✓ Garantie remboursement 30 jours</li>
-            <li>✓ Paiements sécurisés avec Stripe</li>
-            <li>✓ Aucune donnée bancaire stockée localement</li>
-          </ul>
         </div>
       </div>
-
-      <style>
-        .shop-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 20px;
-          margin-bottom: 30px;
-        }
-
-        .shop-card {
-          background: rgba(26, 31, 58, 0.5);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(99, 102, 241, 0.1);
-          border-radius: 16px;
-          padding: 25px;
-          text-align: center;
-          transition: all 0.3s;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .shop-card:hover {
-          transform: translateY(-5px);
-          border-color: rgba(99, 102, 241, 0.3);
-          background: rgba(26, 31, 58, 0.7);
-        }
-
-        .shop-icon {
-          font-size: 48px;
-          margin-bottom: 15px;
-          text-align: center;
-        }
-
-        .shop-card h3 {
-          font-size: 18px;
-          margin-bottom: 10px;
-          color: white;
-          text-align: center;
-        }
-
-        .shop-card p {
-          color: #9ca3af;
-          font-size: 13px;
-          margin-bottom: 15px;
-          flex-grow: 1;
-          text-align: center;
-        }
-
-        .shop-price {
-          font-size: 24px;
-          font-weight: 700;
-          color: #6366f1;
-          margin: 15px 0;
-          text-align: center;
-        }
-
-        .btn-shop {
-          padding: 12px 24px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-          border: none;
-          border-radius: 10px;
-          color: white;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s;
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          width: 100%;
-        }
-
-        .btn-shop svg {
-          width: 20px;
-          height: 20px;
-        }
-
-        .btn-shop:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
-        }
-
-        .btn-shop:active {
-          transform: translateY(0);
-        }
-
-        @media (max-width: 768px) {
-          .shop-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      </style>
     `;
+
+    // Attach event listeners after rendering
+    setTimeout(() => {
+      const openScreenshotsBtn = document.getElementById('btn-open-screenshots');
+      const refreshScreenshotsBtn = document.getElementById('btn-refresh-screenshots');
+      const openSavesBtn = document.getElementById('btn-open-saves');
+      const refreshSavesBtn = document.getElementById('btn-refresh-saves');
+      const screenshotsInfo = document.getElementById('screenshots-info');
+      const savesInfo = document.getElementById('saves-info');
+      const screenshotsGallery = document.getElementById('screenshots-gallery');
+      const modal = document.getElementById('screenshot-modal');
+      const modalImage = document.getElementById('modal-image');
+      const modalInfo = document.getElementById('modal-info');
+      const modalCloseBtn = document.getElementById('modal-close-btn');
+      const modalPrevBtn = document.getElementById('modal-prev-btn');
+      const modalNextBtn = document.getElementById('modal-next-btn');
+      
+      let screenshots = [];
+      let currentModalIndex = 0;
+
+      const loadScreenshots = async () => {
+        screenshotsGallery.innerHTML = '<div style="grid-column: 1 / -1; color: #cbd5e1; text-align: center; padding: 40px; color: #94a3b8;">Chargement...</div>';
+        try {
+          screenshots = await ipcRenderer.invoke('get-screenshots-list');
+          const result = await ipcRenderer.invoke('get-screenshots-count');
+          screenshotsInfo.textContent = `📸 ${result.count} screenshot(s) trouvé(s)`;
+          
+          if (screenshots.length === 0) {
+            screenshotsGallery.innerHTML = '<div style="grid-column: 1 / -1; color: #cbd5e1; text-align: center; padding: 40px; color: #94a3b8;">Aucun screenshot trouvé</div>';
+            return;
+          }
+          
+          screenshotsGallery.innerHTML = screenshots.map((screenshot, index) => `
+            <div class="screenshot-thumbnail" style="cursor: pointer; border-radius: 8px; overflow: hidden; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); transition: all 0.2s ease;" data-index="${index}">
+              <img src="${screenshot.url}" style="width: 100%; height: 150px; object-fit: cover; display: block;">
+              <div style="padding: 8px; font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${screenshot.name}</div>
+            </div>
+          `).join('');
+          
+          // Add click listeners to thumbnails
+          document.querySelectorAll('.screenshot-thumbnail').forEach(thumb => {
+            thumb.addEventListener('click', () => {
+              const index = parseInt(thumb.getAttribute('data-index'));
+              openScreenshotModal(index);
+            });
+            thumb.addEventListener('mouseover', () => {
+              thumb.style.borderColor = 'rgba(99, 102, 241, 0.8)';
+              thumb.style.boxShadow = '0 0 15px rgba(99, 102, 241, 0.3)';
+            });
+            thumb.addEventListener('mouseout', () => {
+              thumb.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+              thumb.style.boxShadow = 'none';
+            });
+          });
+        } catch (error) {
+          console.error('Erreur chargement screenshots:', error);
+          screenshotsGallery.innerHTML = '<div style="grid-column: 1 / -1; color: #cbd5e1; text-align: center; padding: 40px; color: #94a3b8;">Erreur lors du chargement</div>';
+        }
+      };
+
+      const openScreenshotModal = (index) => {
+        currentModalIndex = index;
+        const screenshot = screenshots[index];
+        modalImage.src = screenshot.url;
+        modalInfo.textContent = `${index + 1} / ${screenshots.length} - ${screenshot.name}`;
+        modal.style.display = 'flex';
+      };
+
+      const closeModal = () => {
+        modal.style.display = 'none';
+      };
+
+      const showNextScreenshot = () => {
+        currentModalIndex = (currentModalIndex + 1) % screenshots.length;
+        const screenshot = screenshots[currentModalIndex];
+        modalImage.src = screenshot.url;
+        modalInfo.textContent = `${currentModalIndex + 1} / ${screenshots.length} - ${screenshot.name}`;
+      };
+
+      const showPrevScreenshot = () => {
+        currentModalIndex = (currentModalIndex - 1 + screenshots.length) % screenshots.length;
+        const screenshot = screenshots[currentModalIndex];
+        modalImage.src = screenshot.url;
+        modalInfo.textContent = `${currentModalIndex + 1} / ${screenshots.length} - ${screenshot.name}`;
+      };
+
+      openScreenshotsBtn?.addEventListener('click', async () => {
+        const folder = await ipcRenderer.invoke('get-screenshots-folder').catch(() => '');
+        if (folder) {
+          ipcRenderer.send('open-folder', folder);
+        }
+      });
+
+      refreshScreenshotsBtn?.addEventListener('click', loadScreenshots);
+
+      modalCloseBtn?.addEventListener('click', closeModal);
+      modalPrevBtn?.addEventListener('click', showPrevScreenshot);
+      modalNextBtn?.addEventListener('click', showNextScreenshot);
+
+      // Close modal on background click
+      modal?.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      // Keyboard navigation
+      document.addEventListener('keydown', (e) => {
+        if (modal.style.display === 'flex') {
+          if (e.key === 'ArrowRight') showNextScreenshot();
+          if (e.key === 'ArrowLeft') showPrevScreenshot();
+          if (e.key === 'Escape') closeModal();
+        }
+      });
+
+      openSavesBtn?.addEventListener('click', async () => {
+        const folder = await ipcRenderer.invoke('get-saves-folder').catch(() => '');
+        if (folder) {
+          ipcRenderer.send('open-folder', folder);
+        }
+      });
+
+      refreshSavesBtn?.addEventListener('click', async () => {
+        savesInfo.textContent = 'Chargement...';
+        const result = await ipcRenderer.invoke('get-saves-count').catch(() => ({ count: 0, folder: '' }));
+        savesInfo.textContent = `💾 ${result.count} monde(s) sauvegardé(s)`;
+      });
+
+      // Initial load
+      (async () => {
+        await loadScreenshots();
+        const savesResult = await ipcRenderer.invoke('get-saves-count').catch(() => ({ count: 0 }));
+        savesInfo.textContent = `💾 ${savesResult.count} monde(s) sauvegardé(s)`;
+      })();
+    }, 100);
+
+    return html;
   }
 
   async renderTexturePacksView() {
@@ -3015,7 +2776,7 @@ renderMainLayout() {
           </div>
         </div>
         <button class="btn-delete-resourcepack" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-name="${this.escapeHtml(pack.name || '')}" title="Supprimer ce texture pack" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 8px; transition: all 0.3s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-shrink: 0;">
-          🗑️
+          ${lucideIcons.trash3}
         </button>
       </div>
     `;
@@ -4128,11 +3889,11 @@ renderMainLayout() {
           <div style="font-size: 64px; margin-bottom: 20px; animation: float 3s ease-in-out infinite;">🚀</div>
           <h2 style="font-size: 28px; font-weight: 700; margin-bottom: 10px;">Fonctionnalité à venir !</h2>
           <p style="color: #94a3b8; font-size: 16px; max-width: 400px; margin: 0 auto;">
-            Cette fonctionnalité arrivera très bientôt. Restez connecté pour les dernières actualités ! 🎮
+            Cette fonctionnalité arrivera très bientôt. Restez connecté pour les dernières actualités !
           </p>
           <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: center;">
             <div style="background: rgba(99, 102, 241, 0.2); padding: 12px 20px; border-radius: 10px; color: #6366f1; font-weight: 600;">
-              ⏱️ Très bientôt
+              Très bientôt
             </div>
           </div>
         </div>

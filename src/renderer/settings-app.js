@@ -1,6 +1,7 @@
 const { ipcRenderer } = require('electron');
 const LauncherVersion = require('../main/launcher-version.js');
 const UIFeedback = require('./ui-feedback.js');
+const { icons: lucideIcons } = require('./lucide-icons.js');
 
 let originalSettings = {};
 let currentSettings = {};
@@ -97,7 +98,7 @@ async function loadAccountInfo() {
     
     if (accountInfo && accountInfo.username) {
       if (accountNameEl) accountNameEl.textContent = accountInfo.username;
-      if (accountEmailEl) accountEmailEl.textContent = accountInfo.email || 'N/A';
+      if (accountEmailEl) accountEmailEl.textContent = accountInfo.id || accountInfo.uuid || 'N/A';
       if (accountStatusEl) accountStatusEl.innerHTML = '<span style="color: #10b981;">✓ En ligne</span>';
     } else {
       if (accountStatusEl) accountStatusEl.innerHTML = '<span style="color: #ef4444;">✗ Pas connecte</span>';
@@ -715,7 +716,7 @@ function renderSettings() {
               <label>Chemin vers javaw.exe</label>
               <div style="display: flex; gap: 8px;">
                 <input type="text" id="java-path-input" class="input-field" placeholder="exemple: C:\\Program Files\\Java\\jdk-25.0.1\\bin\\javaw.exe" style="flex: 1;">
-                <button id="detect-java-btn" class="dir-browse-btn" style="min-width: 100px;">🔍 Détecter</button>
+                <button id="detect-java-btn" class="dir-browse-btn" style="min-width: 100px;"><span style="display: inline-flex; width: 16px; height: 16px;">${lucideIcons.magnifyingGlass}</span> Détecter</button>
               </div>
               <p id="java-detected-path" class="help-text" style="margin-top: 8px; color: #cbd5e1;">Cliquez sur &quot;Détecter&quot; pour chercher Java automatiquement</p>
               <p class="help-text">Laisse vide pour utiliser la configuration par défaut</p>
@@ -830,8 +831,8 @@ function renderSettings() {
               <p id="account-username" style="color: #d1d5db; padding: 10px 0; font-weight: 500;">Chargement...</p>
             </div>
             <div class="setting-item">
-              <label>Email</label>
-              <p id="account-email" style="color: #d1d5db; padding: 10px 0; font-weight: 500;">Chargement...</p>
+              <label>ID Utilisateur</label>
+              <p id="account-email" style="color: #d1d5db; padding: 10px 0; font-weight: 500; font-family: 'Courier New', monospace; word-break: break-all;">Chargement...</p>
             </div>
             <div class="setting-item">
               <label>Statut</label>
@@ -1093,7 +1094,7 @@ function renderSettings() {
             <p style="color: #d1d5db; line-height: 1.8; margin-bottom: 20px;">
               <strong style="color: #6366f1; font-size: 16px;">Version:</strong> ${LauncherVersion.getVersionString()}<br>
               <strong style="color: #6366f1;">Developpeur:</strong> Pharos<br>
-              <strong style="color: #6366f1;">Licence:</strong> CLv1<br>
+              <strong style="color: #6366f1;">Licence:</strong> VMv1<br>
             </p>
           </div>
 
@@ -1652,7 +1653,7 @@ function renderSettings() {
       const detectBtn = detectJavaBtn;
       detectBtn.disabled = true;
       const originalText = detectBtn.textContent;
-      detectBtn.textContent = '🔍 Recherche...';
+      detectBtn.textContent = '� Recherche...';
       
       try {
         const requiredResult = await ipcRenderer.invoke('get-required-java-version', mcVersion);
@@ -1693,9 +1694,17 @@ function renderSettings() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  ui.installStyles();
-  installAlertBridge();
-  renderSettings();
+  console.log('✅ DOMContentLoaded started');
+  try {
+    ui.installStyles();
+    console.log('✅ installStyles done');
+    installAlertBridge();
+    console.log('✅ installAlertBridge done');
+    renderSettings();
+    console.log('✅ renderSettings done');
+  } catch (error) {
+    console.error('❌ Erreur lors du rendu:', error);
+  }
   await loadSettings();
   await loadAccountInfo();
   await loadStorageInfo();
@@ -1707,7 +1716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   const currentVersionEl = document.getElementById('current-version');
   if (currentVersionEl) {
-    currentVersionEl.textContent = '${LAUNCHERVERSION.GETFULLVERSION()}';
+    currentVersionEl.textContent = LauncherVersion.getFullVersion();
   }
   
   // 🔔 Signaler au main process que la fenêtre est prête

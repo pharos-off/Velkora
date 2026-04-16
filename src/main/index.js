@@ -3013,6 +3013,92 @@ ipcMain.handle('get-resourcepacks-folder', async () => {
   return getResourcePacksDir();
 });
 
+// ✅ SCREENSHOTS & SAVES HANDLERS
+ipcMain.handle('get-screenshots-folder', async () => {
+  const folder = path.join(getGameDir(), 'screenshots');
+  try {
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+    }
+    return folder;
+  } catch (error) {
+    console.error('Erreur get-screenshots-folder:', error);
+    return '';
+  }
+});
+
+ipcMain.handle('get-screenshots-count', async () => {
+  try {
+    const folder = path.join(getGameDir(), 'screenshots');
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+      return { count: 0, folder };
+    }
+    const files = fs.readdirSync(folder).filter(f => /\.(png|jpg|jpeg)$/i.test(f));
+    return { count: files.length, folder };
+  } catch (error) {
+    console.error('Erreur get-screenshots-count:', error);
+    return { count: 0, folder: '' };
+  }
+});
+
+ipcMain.handle('get-saves-folder', async () => {
+  const folder = path.join(getGameDir(), 'saves');
+  try {
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+    }
+    return folder;
+  } catch (error) {
+    console.error('Erreur get-saves-folder:', error);
+    return '';
+  }
+});
+
+ipcMain.handle('get-saves-count', async () => {
+  try {
+    const folder = path.join(getGameDir(), 'saves');
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+      return { count: 0, folder };
+    }
+    const worlds = fs.readdirSync(folder).filter(f => {
+      const stat = fs.statSync(path.join(folder, f));
+      return stat.isDirectory();
+    });
+    return { count: worlds.length, folder };
+  } catch (error) {
+    console.error('Erreur get-saves-count:', error);
+    return { count: 0, folder: '' };
+  }
+});
+
+ipcMain.handle('get-screenshots-list', async () => {
+  try {
+    const folder = path.join(getGameDir(), 'screenshots');
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+      return [];
+    }
+    const files = fs.readdirSync(folder)
+      .filter(f => /\.(png|jpg|jpeg)$/i.test(f))
+      .sort((a, b) => {
+        const statA = fs.statSync(path.join(folder, a));
+        const statB = fs.statSync(path.join(folder, b));
+        return statB.mtime - statA.mtime; // Most recent first
+      })
+      .map(f => ({
+        name: f,
+        path: path.join(folder, f),
+        url: `file://${path.join(folder, f).replace(/\\/g, '/')}`
+      }));
+    return files;
+  } catch (error) {
+    console.error('Erreur get-screenshots-list:', error);
+    return [];
+  }
+});
+
 function getDirectorySize(targetPath) {
   try {
     const stat = fs.statSync(targetPath);

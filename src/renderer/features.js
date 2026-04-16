@@ -6,6 +6,7 @@
 
 const { ipcRenderer } = require('electron');
 const LauncherVersion = require('../main/launcher-version.js');
+const { icons } = require('./lucide-icons');
 
 class LauncherFeatures {
   constructor(app) {
@@ -31,13 +32,13 @@ class LauncherFeatures {
         <!-- STATISTIQUES PRINCIPALES -->
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 30px;">
           <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 14px; padding: 24px;">
-            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">🎮 Parties jouées</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 14px; display: flex;">${icons.gamepad}</span> Parties jouées</div>
             <div style="font-size: 36px; font-weight: 700; color: #6366f1; margin-bottom: 8px;">${stats.totalSessions || 0}</div>
             <div style="font-size: 12px; color: #64748b;">+${stats.weeklySessionCount || 0} cette semaine</div>
           </div>
 
           <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 14px; padding: 24px;">
-            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">⏱️ Temps total</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 14px; display: flex;">${icons.clock2}</span> Temps total</div>
             <div style="font-size: 36px; font-weight: 700; color: #3b82f6; margin-bottom: 8px;">${stats.totalPlaytimeFormatted || '0h'}</div>
             <div style="font-size: 12px; color: #64748b;">Temps cumulé</div>
           </div>
@@ -55,7 +56,7 @@ class LauncherFeatures {
           </div>
 
           <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.15)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 14px; padding: 24px;">
-            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">🏆 Plus longue partie</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 14px; display: flex;">${icons.trophy}</span> Plus longue partie</div>
             <div style="font-size: 36px; font-weight: 700; color: #a855f7; margin-bottom: 8px;">${longestSession}</div>
             <div style="font-size: 12px; color: #64748b;">Record personnel</div>
           </div>
@@ -90,7 +91,7 @@ class LauncherFeatures {
         <!-- STATISTIQUES DÉTAILLÉES -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
           <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px; padding: 24px;">
-            <h3 style="color: #e2e8f0; margin-bottom: 16px; font-size: 15px; font-weight: 600;">🎯 Préférences</h3>
+            <h3 style="color: #e2e8f0; margin-bottom: 16px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;"><span style="width: 18px; height: 18px; display: flex;">${icons.target}</span> Préférences</h3>
             <div style="display: flex; flex-direction: column; gap: 12px;">
               <div style="background: rgba(15, 23, 42, 0.5); border-left: 3px solid #6366f1; padding: 12px 16px; border-radius: 8px;">
                 <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase;">Version préférée</div>

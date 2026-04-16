@@ -5,7 +5,7 @@
 
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { icons } = require('./lucide-icons');
+const { icons: lucideIcons } = require('./lucide-icons');
 
 class ModsManager {
   constructor(app) {
@@ -20,6 +20,7 @@ class ModsManager {
     this.autoRefreshInterval = null;
     this.autoRefreshInFlight = false;
     this.lastModsSignature = '';
+    this.currentCategory = 'mods'; // ✅ AJOUTÉ: Pour tracker mods, texturepacks, shaders
     this.filterState = {
       query: '',
       status: 'all',
@@ -76,6 +77,15 @@ class ModsManager {
       .replace(/"/g, '&quot;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
+
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   parseSizeToBytes(sizeLabel) {
@@ -150,11 +160,62 @@ class ModsManager {
     }
   }
 
+  // ✅ SETTER pour changer la catégorie actuelle
+  setCurrentCategory(category) {
+    if (['mods', 'texturepacks', 'shaders'].includes(category)) {
+      this.currentCategory = category;
+    }
+  }
 
   /**
-   * ✅ 1. RENDRE LE GESTIONNAIRE DE MODS
+   * ✅ 1. RENDRE LE GESTIONNAIRE DE MODS (AVEC ONGLETS)
    */
   async render() {
+    switch (this.currentCategory) {
+      case 'texturepacks':
+        return await this.renderTexturePacksSection();
+      case 'shaders':
+        return await this.renderShadersSection();
+      default:
+      case 'mods':
+        return await this.renderModsSection();
+    }
+  }
+
+  // ✅ RENDRE LES ONGLETS
+  renderTabs() {
+    const tabs = [
+      { id: 'mods', label: 'Mods', icon: lucideIcons.puzzle },
+      { id: 'texturepacks', label: 'Texture Packs', icon: lucideIcons.palette },
+      { id: 'shaders', label: 'Shaders', icon: lucideIcons.sparkles }
+    ];
+
+    return `
+      <div style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid rgba(99, 102, 241, 0.2); padding-bottom: 0;">
+        ${tabs.map(tab => `
+          <button class="mods-tab-button" data-tab="${tab.id}" style="
+            padding: 12px 16px;
+            background: ${this.currentCategory === tab.id ? 'rgba(99, 102, 241, 0.15)' : 'transparent'};
+            border: none;
+            border-bottom: ${this.currentCategory === tab.id ? '2px solid #6366f1' : '2px solid transparent'};
+            color: ${this.currentCategory === tab.id ? '#e2e8f0' : '#94a3b8'};
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          ">
+            <span>${tab.icon}</span> ${tab.label}
+          </button>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // ✅ SECTION MODS (ANCIEN RENDU)
+  async renderModsSection() {
     const [modsResult, modsFolderResult, settingsResult] = await Promise.all([
       ipcRenderer.invoke('get-installed-mods'),
       ipcRenderer.invoke('get-mods-folder').catch(error => ({ error })),
@@ -183,17 +244,20 @@ class ModsManager {
 
     return `
       <div class="view-container" style="padding: 40px;">
-        <div class="view-header" style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="view-header" style="margin-bottom: 24px;">
           <div>
             <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;"><i class="bi bi-puzzle"></i> Gestionnaire de mods</h1>
             <p style="color: #94a3b8; margin-top: 10px;">${mods.length} mod(s) installés • ${enabledModsCount} activé(s)</p>
           </div>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
-            <button id="btn-open-mods-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
-            <button id="btn-refresh-mods" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
-            <button id="btn-modrinth-search" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; cursor: pointer;">🔍 Modrinth</button>
-            <button id="btn-import-mod" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; max-width: 120px;">+ Importer</button>
-          </div>
+        </div>
+
+        ${this.renderTabs()}
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 24px;">
+          <button id="btn-open-mods-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
+          <button id="btn-refresh-mods" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
+          <button id="btn-modrinth-search" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; cursor: pointer;">🔍 Modrinth</button>
+          <button id="btn-import-mod" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; max-width: 120px;">+ Importer</button>
         </div>
 
         <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
@@ -232,6 +296,88 @@ class ModsManager {
     `;
   }
 
+  // ✅ SECTION TEXTURE PACKS
+  async renderTexturePacksSection() {
+    const [resourcepacksFolder, installedPacks] = await Promise.all([
+      ipcRenderer.invoke('get-resourcepacks-folder').catch(() => ''),
+      ipcRenderer.invoke('get-installed-resourcepacks').catch(() => [])
+    ]);
+    const selectedProfile = this.app.selectedProfile || this.app.profiles?.[0] || null;
+    const gameVersion = selectedProfile?.version || '';
+    const packs = Array.isArray(installedPacks) ? installedPacks : [];
+
+    return `
+      <div class="view-container" style="padding: 40px;">
+        <div class="view-header" style="margin-bottom: 24px;">
+          <div>
+            <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;"><i class="bi bi-image"></i> Texture Packs</h1>
+            <p style="color: #94a3b8; margin-top: 10px;">${packs.length} pack(s) installé(s) • Téléchargez et gérez vos packs de textures.</p>
+          </div>
+        </div>
+
+        ${this.renderTabs()}
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 24px;">
+          <button id="btn-open-resourcepacks-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
+          <button id="btn-refresh-resourcepacks" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
+        </div>
+
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">
+            <strong style="color: #6366f1;">Chemin d'installation :</strong> ${this.escapeHtml(resourcepacksFolder || 'Non disponible')}
+          </div>
+          <div style="color: #94a3b8; font-size: 12px;">
+            Version ciblée : ${this.escapeHtml(gameVersion || 'Inconnue')} • Les packs compatibles sont recherchés sur Modrinth.
+          </div>
+        </div>
+
+        ${packs.length === 0 ? this.renderEmptyTexturePacks() : this.renderInstalledResourcePacksList(packs)}
+        ${this.renderResourcePackStats(packs)}
+        ${this.renderResourcePackInfo()}
+
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #e2e8f0; font-size: 15px; font-weight: 700; margin-bottom: 12px;">Recherche Modrinth</div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <input id="resourcepack-search-input" type="text" placeholder="Rechercher un texture pack..." style="flex: 1; min-width: 260px; padding: 12px; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; color: #e2e8f0; font-size: 14px;">
+            <button id="btn-search-resourcepacks" class="btn-primary" style="padding: 10px 18px; width: auto;">Rechercher</button>
+          </div>
+        </div>
+
+        <div id="resourcepacks-results" style="max-width: 1000px;">
+          <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 16px;">${lucideIcons.download}</div>
+            <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Recherchez un texture pack</h3>
+            <p style="color: #94a3b8; margin: 0;">Les téléchargements seront placés dans le dossier resourcepacks du jeu.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ✅ SECTION SHADERS
+  async renderShadersSection() {
+    return `
+      <div class="view-container" style="padding: 40px;">
+        <div class="view-header" style="margin-bottom: 24px;">
+          <div>
+            <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;"><span style="display: flex; width: 24px; height: 24px;">${lucideIcons.sparkles}</span> Shaders</h1>
+            <p style="color: #94a3b8; margin-top: 10px;">Gérez vos shaders pour améliorer l'apparence visuelle de Minecraft.</p>
+          </div>
+        </div>
+
+        ${this.renderTabs()}
+
+        <div style="max-width: 1000px; margin-bottom: 30px;">
+          <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 16px; display: flex; justify-content: center;">${lucideIcons.sparkles}</div>
+            <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Gestion des Shaders - Bientôt disponible</h3>
+            <p style="color: #94a3b8; margin: 0;">La système de gestion des shaders sera bientôt implémenté. Pour le moment, utilisez la section Texture Packs & Mods.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   /**
    * ✅ 2. RENDRE L'ÉTAT VIDE
    */
@@ -239,7 +385,7 @@ class ModsManager {
     return `
       <div style="max-width: 1000px; margin-bottom: 30px;">
         <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
-          <div style="font-size: 24px; margin-bottom: 16px;">${icons.download}</div>
+          <div style="font-size: 24px; margin-bottom: 16px; display: flex; justify-content: center;">${lucideIcons.download}</div>
           <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Aucun mod installé</h3>
           <p style="color: #94a3b8; margin: 0;">Importez ou téléchargez votre premier mod pour personnaliser Minecraft</p>
         </div>
@@ -287,7 +433,7 @@ class ModsManager {
           </div>
         </div>
         <button class="btn-delete-mod" data-mod-id="${mod.id}" data-mod-name="${this.escapeAttribute(mod.name)}" title="Supprimer ce mod" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 8px; transition: all 0.3s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-shrink: 0;">
-          🗑️
+          ${lucideIcons.trash3}
         </button>
       </div>
     `;
@@ -299,9 +445,9 @@ class ModsManager {
   renderStats(mods, enabledModsCount) {
     return `
       <div style="max-width: 1000px; margin-bottom: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-        ${this.renderStatCard('Mods installés', mods.length, icons.download)}
-        ${this.renderStatCard('Mods activés', enabledModsCount, icons.check, '#22c55e')}
-        ${this.renderStatCard('Mods désactivés', mods.length - enabledModsCount, icons.x, '#ef4444')}
+        ${this.renderStatCard('Mods installés', mods.length, lucideIcons.download)}
+        ${this.renderStatCard('Mods activés', enabledModsCount, lucideIcons.checkCircle2, '#22c55e')}
+        ${this.renderStatCard('Mods désactivés', mods.length - enabledModsCount, lucideIcons.xCircle, '#ef4444')}
       </div>
     `;
   }
@@ -326,7 +472,83 @@ class ModsManager {
     return `
       <div style="max-width: 1000px; padding: 20px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
         <p style="color: #cbd5e1; margin: 0; font-size: 14px;">
-          <strong style="color: #6366f1;">💡 Info:</strong> Vous pouvez activer/désactiver les mods sans les supprimer. Vérifiez la compatibilité avec votre version de Minecraft avant d'activer un mod.
+          <strong style="color: #6366f1;"><span style="display: inline-flex; width: 16px; height: 16px;">${lucideIcons.lightbulb}</span> Info:</strong> Vous pouvez activer/désactiver les mods sans les supprimer. Vérifiez la compatibilité avec votre version de Minecraft avant d'activer un mod.
+        </p>
+      </div>
+    `;
+  }
+
+  // ✅ Helper pour texture packs
+  renderEmptyTexturePacks() {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px;">
+        <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 16px; display: flex; justify-content: center;">${lucideIcons.download}</div>
+          <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Aucun texture pack installé</h3>
+          <p style="color: #94a3b8; margin: 0;">Utilisez la recherche Modrinth ci-dessous pour télécharger votre premier pack.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  renderInstalledResourcePacksList(packs) {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+          <h2 style="margin: 0; color: #e2e8f0; font-size: 20px;">Packs installés</h2>
+          <div style="color: #94a3b8; font-size: 12px;">Cliquez sur un pack pour voir ses détails.</div>
+        </div>
+        <div id="resourcepacks-list-container" style="display: block; width: 100%;">
+          ${packs.map((pack) => this.renderResourcePackItem(pack)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderResourcePackItem(pack) {
+    const details = [
+      `Fichier : ${pack.fileName || 'Inconnu'}`,
+      `Type : ${pack.type === 'folder' ? 'Dossier' : 'Archive'}`,
+      `Taille : ${pack.size || 'N/A'}`
+    ].join(' • ');
+
+    return `
+      <div class="resourcepack-item" data-pack-name="${this.escapeHtml(pack.name || '')}" data-file-name="${this.escapeHtml(pack.fileName || '')}" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-size="${this.escapeHtml(pack.size || '')}" data-pack-type="${this.escapeHtml(pack.type || '')}" data-imported-at="${this.escapeHtml(pack.importedAt || '')}" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: all 0.3s; width: 100%; min-width: 0; margin-bottom: 12px; cursor: pointer;">
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+          <div style="width: 20px; text-align: center; flex-shrink: 0;">${pack.type === 'folder' ? '📁' : '🖼️'}</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${this.escapeHtml(pack.name || pack.fileName || 'Texture pack')}</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${this.escapeHtml(details)}
+            </div>
+          </div>
+        </div>
+        <button class="btn-delete-resourcepack" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-name="${this.escapeHtml(pack.name || '')}" title="Supprimer ce texture pack" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 8px; transition: all 0.3s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-shrink: 0;">
+          ${lucideIcons.trash3}
+        </button>
+      </div>
+    `;
+  }
+
+  renderResourcePackStats(packs) {
+    const folderCount = packs.filter((pack) => pack.type === 'folder').length;
+    const archiveCount = packs.length - folderCount;
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        ${this.renderStatCard('Packs installés', packs.length, lucideIcons.download)}
+        ${this.renderStatCard('Archives', archiveCount, '🗜️', '#22c55e')}
+        ${this.renderStatCard('Dossiers', folderCount, lucideIcons.folder, '#f59e0b')}
+      </div>
+    `;
+  }
+
+  renderResourcePackInfo() {
+    return `
+      <div style="max-width: 1000px; padding: 20px; margin-bottom: 30px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
+        <p style="color: #cbd5e1; margin: 0; font-size: 14px;">
+          <strong style="color: #6366f1;">Info :</strong> Les noms longs sont tronqués dans la liste, mais vous pouvez cliquer sur un pack pour afficher ses détails complets ou le supprimer.
         </p>
       </div>
     `;
@@ -346,6 +568,19 @@ class ModsManager {
     // Ajouter les écouteurs
     document.addEventListener('click', this.deleteHandler);
     document.addEventListener('change', this.changeHandler);
+    
+    // ✅ AJOUTER LES ÉCOUTEURS POUR LES ONGLETS
+    const tabButtons = document.querySelectorAll('.mods-tab-button');
+    tabButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tabId = button.dataset.tab;
+        this.setCurrentCategory(tabId);
+        this.rerenderModsView();
+      });
+    });
+    
     this.applyLocalFilters();
     this.startAutoRefresh();
   }
@@ -416,6 +651,66 @@ class ModsManager {
     if (modItem && !e.target.closest('.mod-toggle')) {
       e.preventDefault();
       await this.showModDetails(modItem);
+    }
+
+    // ✅ HANDLERS POUR LES TEXTURE PACKS
+    if (e.target.id === 'btn-open-resourcepacks-folder' || e.target.closest('#btn-open-resourcepacks-folder')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const folder = await ipcRenderer.invoke('get-resourcepacks-folder').catch(() => '');
+      if (folder) {
+        ipcRenderer.send('open-folder', folder);
+        this.showToast({
+          title: 'Dossier des texture packs ouvert',
+          message: folder,
+          type: 'success'
+        });
+      }
+      return;
+    }
+
+    if (e.target.id === 'btn-refresh-resourcepacks' || e.target.closest('#btn-refresh-resourcepacks')) {
+      e.preventDefault();
+      e.stopPropagation();
+      await this.rerenderModsView();
+      this.showToast({
+        title: 'Texture packs recharges',
+        message: 'La liste des texture packs a ete mise a jour.',
+        type: 'info'
+      });
+      return;
+    }
+
+    if (e.target.id === 'btn-search-resourcepacks' || e.target.closest('#btn-search-resourcepacks')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const searchInput = document.getElementById('resourcepack-search-input');
+      const query = searchInput?.value?.trim();
+      if (query) {
+        await this.searchTexturePacks(query);
+      }
+      return;
+    }
+
+    // DELETE resourcepack
+    let deleteResourcepackBtn = e.target.classList.contains('btn-delete-resourcepack') ? e.target : null;
+    if (!deleteResourcepackBtn && e.target.closest) {
+      deleteResourcepackBtn = e.target.closest('.btn-delete-resourcepack');
+    }
+    
+    if (deleteResourcepackBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const packPath = deleteResourcepackBtn.getAttribute('data-pack-path');
+      const packName = deleteResourcepackBtn.getAttribute('data-pack-name') || 'ce texture pack';
+      await this.deleteTexturePack(packPath, packName);
+      return;
+    }
+
+    const packItem = e.target.closest('.resourcepack-item');
+    if (packItem) {
+      e.preventDefault();
+      await this.showTexturePackDetails(packItem);
     }
   }
 
@@ -701,7 +996,7 @@ class ModsManager {
       <div id="modrinth-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
         <div id="modrinth-dialog" tabindex="-1" style="background: #0f172a; border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 16px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0; color: #e2e8f0;">🔍 Recherche Modrinth</h2>
+            <h2 style="margin: 0; color: #e2e8f0; display: flex; align-items: center; gap: 8px;"><span style="display: flex; width: 18px; height: 18px;">${lucideIcons.magnifyingGlass}</span> Recherche Modrinth</h2>
             <button id="close-modrinth-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #94a3b8;">✕</button>
           </div>
 
@@ -1113,6 +1408,141 @@ class ModsManager {
       confirmLabel: options.confirmLabel || 'Confirmer',
       cancelLabel: options.cancelLabel || 'Annuler'
     });
+  }
+
+  // ✅ TEXTURE PACK METHODS
+  async showTexturePackDetails(packItem) {
+    const details = [
+      `Nom : ${packItem.dataset.packName || 'Inconnu'}`,
+      `Fichier : ${packItem.dataset.fileName || 'Inconnu'}`,
+      `Type : ${packItem.dataset.packType === 'folder' ? 'Dossier' : 'Archive'}`,
+      `Taille : ${packItem.dataset.packSize || 'N/A'}`,
+      `Ajouté le : ${packItem.dataset.importedAt ? new Date(packItem.dataset.importedAt).toLocaleString('fr-FR') : 'Inconnu'}`,
+      `Chemin : ${packItem.dataset.packPath || 'Inconnu'}`
+    ];
+
+    await this.showDialog({
+      title: packItem.dataset.packName || 'Détails du texture pack',
+      message: 'Informations disponibles pour ce texture pack.',
+      details,
+      type: 'info'
+    });
+  }
+
+  async deleteTexturePack(packPath, packName = 'ce texture pack') {
+    const confirmed = await this.showConfirmDialog({
+      title: 'Supprimer ce texture pack ?',
+      message: `${packName} sera retiré du dossier resourcepacks.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      type: 'error'
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const result = await ipcRenderer.invoke('delete-resourcepack', packPath);
+      if (result?.success) {
+        this.showToast({
+          title: 'Texture pack supprimé',
+          message: `${packName} a été supprimé avec succès.`,
+          type: 'success'
+        });
+        await this.rerenderModsView();
+        return;
+      }
+
+      this.showToast({
+        title: 'Suppression impossible',
+        message: result?.message || 'Impossible de supprimer ce texture pack.',
+        type: 'error'
+      });
+    } catch (error) {
+      console.error('Erreur suppression texture pack:', error);
+      this.showToast({
+        title: 'Erreur',
+        message: 'Une erreur est survenue lors de la suppression.',
+        type: 'error'
+      });
+    }
+  }
+
+  async searchTexturePacks(query = '') {
+    const resultsContainer = document.getElementById('resourcepacks-results');
+    if (!resultsContainer) return;
+
+    const searchQuery = query || document.getElementById('resourcepack-search-input')?.value?.trim() || '';
+    if (!searchQuery) {
+      this.showToast({
+        title: 'Recherche vide',
+        message: 'Entrez un nom de texture pack.',
+        type: 'info'
+      });
+      return;
+    }
+
+    resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Recherche en cours...</p>';
+
+    try {
+      const gameVersion = this.app.selectedProfile?.version || '';
+      const facets = encodeURIComponent(JSON.stringify([['project_type:resourcepack']]));
+      const versionParam = gameVersion ? `&versions=${encodeURIComponent(JSON.stringify([gameVersion]))}` : '';
+      const response = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(searchQuery)}&limit=12&facets=${facets}${versionParam}`);
+      const data = await response.json();
+
+      if (!data.hits || data.hits.length === 0) {
+        resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Aucun texture pack trouvé</p>';
+        return;
+      }
+
+      resultsContainer.innerHTML = data.hits.map((pack) => `
+        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 4px;">${this.escapeHtml(pack.title)}</div>
+            <div style="color: #94a3b8; font-size: 13px; margin-bottom: 6px;">${this.escapeHtml(pack.description || 'Aucune description')}</div>
+            <div style="color: #6366f1; font-size: 12px;">Téléchargements : ${(pack.downloads || 0).toLocaleString()}</div>
+          </div>
+          <button class="btn-download-resourcepack" data-pack-id="${this.escapeHtml(pack.project_id || pack.slug)}" data-pack-name="${this.escapeHtml(pack.title)}" style="background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; padding: 10px 14px; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; white-space: nowrap;">Télécharger</button>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.btn-download-resourcepack').forEach((button) => {
+        button.addEventListener('click', async () => {
+          await this.downloadTexturePack(button.dataset.packId, button.dataset.packName);
+        });
+      });
+    } catch (error) {
+      console.error('Erreur recherche texture packs:', error);
+      resultsContainer.innerHTML = '<p style="color: #ef4444; text-align: center;">Erreur pendant la recherche.</p>';
+    }
+  }
+
+  async downloadTexturePack(projectId, packName) {
+    try {
+      const result = await ipcRenderer.invoke('download-modrinth-resourcepack', projectId, packName, {
+        gameVersion: this.app.selectedProfile?.version
+      });
+
+      if (result?.success) {
+        await this.rerenderModsView();
+        await this.showDialog({
+          title: 'Texture pack téléchargé',
+          message: `${packName} a été téléchargé et est installé dans le dossier resourcepacks.`,
+          type: 'success'
+        });
+      } else {
+        throw new Error(result?.message || 'Erreur lors du téléchargement');
+      }
+    } catch (error) {
+      console.error('Erreur téléchargement texture pack:', error);
+      await this.showDialog({
+        title: 'Erreur de téléchargement',
+        message: error.message ||'Une erreur est survenue lors du téléchargement du texture pack.',
+        type: 'error'
+      });
+    }
   }
 
   /**
