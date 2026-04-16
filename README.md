@@ -59,7 +59,7 @@ Avez-vous trouvé un bug ou avez une suggestion ?
 
 ## 📄 Licence
 
-### [VelkoraMC License v1 (CLv1)](./LICENSE)
+### [VelkoraMC License v1 (VMv1)](./LICENSE)
 
 **Copyright © 2026 Eloan**
 
