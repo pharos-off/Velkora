@@ -1832,6 +1832,23 @@
       flex-wrap: nowrap !important;
     }
 
+    /* ✅ STYLES POUR LES IMAGES DE MODS */
+    .mod-item:hover {
+      background: rgba(30, 41, 59, 0.8) !important;
+      border-color: rgba(99, 102, 241, 0.4) !important;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15) !important;
+    }
+
+    .mod-item img {
+      transition: transform 0.3s ease, filter 0.3s ease;
+      border-radius: 8px;
+    }
+
+    .mod-item:hover img {
+      transform: scale(1.05);
+      filter: brightness(1.1);
+    }
+
    * {
       margin: 0;
       padding: 0;

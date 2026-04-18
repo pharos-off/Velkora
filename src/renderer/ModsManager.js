@@ -256,7 +256,7 @@ class ModsManager {
         <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 24px;">
           <button id="btn-open-mods-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
           <button id="btn-refresh-mods" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
-          <button id="btn-modrinth-search" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; cursor: pointer;">🔍 Modrinth</button>
+          <button id="btn-modrinth-search" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; cursor: pointer; display: flex; align-items: center; gap: 6px;"><span style="display: flex;">${lucideIcons.magnifyingGlass}</span> Modrinth</button>
           <button id="btn-import-mod" class="btn-primary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto; max-width: 120px;">+ Importer</button>
         </div>
 
@@ -356,22 +356,56 @@ class ModsManager {
 
   // ✅ SECTION SHADERS
   async renderShadersSection() {
+    const [shadersFolder, installedShaders] = await Promise.all([
+      ipcRenderer.invoke('get-shaders-folder').catch(() => ''),
+      ipcRenderer.invoke('get-installed-shaders').catch(() => [])
+    ]);
+    const selectedProfile = this.app.selectedProfile || this.app.profiles?.[0] || null;
+    const gameVersion = selectedProfile?.version || '';
+    const shaders = Array.isArray(installedShaders) ? installedShaders : [];
+
     return `
       <div class="view-container" style="padding: 40px;">
         <div class="view-header" style="margin-bottom: 24px;">
           <div>
             <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;"><span style="display: flex; width: 24px; height: 24px;">${lucideIcons.sparkles}</span> Shaders</h1>
-            <p style="color: #94a3b8; margin-top: 10px;">Gérez vos shaders pour améliorer l'apparence visuelle de Minecraft.</p>
+            <p style="color: #94a3b8; margin-top: 10px;">${shaders.length} shader(s) installé(s) • Téléchargez et gérez vos shaders.</p>
           </div>
         </div>
 
         ${this.renderTabs()}
 
-        <div style="max-width: 1000px; margin-bottom: 30px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 24px;">
+          <button id="btn-open-shaders-folder" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Ouvrir le dossier</button>
+          <button id="btn-refresh-shaders" class="btn-secondary" style="white-space: nowrap; padding: 8px 16px; font-size: 14px; width: auto;">Rafraichir</button>
+        </div>
+
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">
+            <strong style="color: #6366f1;">Chemin d'installation :</strong> ${this.escapeHtml(shadersFolder || 'Non disponible')}
+          </div>
+          <div style="color: #94a3b8; font-size: 12px;">
+            Version ciblée : ${this.escapeHtml(gameVersion || 'Inconnue')} • Les shaders compatibles sont recherchés sur Modrinth.
+          </div>
+        </div>
+
+        ${shaders.length === 0 ? this.renderEmptyShaders() : this.renderInstalledShadersList(shaders)}
+        ${this.renderShaderStats(shaders)}
+        ${this.renderShaderInfo()}
+
+        <div style="max-width: 1000px; margin-bottom: 24px; padding: 18px; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 14px;">
+          <div style="color: #e2e8f0; font-size: 15px; font-weight: 700; margin-bottom: 12px;">Recherche Modrinth</div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <input id="shader-search-input" type="text" placeholder="Rechercher un shader..." style="flex: 1; min-width: 260px; padding: 12px; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; color: #e2e8f0; font-size: 14px;">
+            <button id="btn-search-shaders" class="btn-primary" style="padding: 10px 18px; width: auto;">Rechercher</button>
+          </div>
+        </div>
+
+        <div id="shaders-results" style="max-width: 1000px;">
           <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
-            <div style="font-size: 24px; margin-bottom: 16px; display: flex; justify-content: center;">${lucideIcons.sparkles}</div>
-            <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Gestion des Shaders - Bientôt disponible</h3>
-            <p style="color: #94a3b8; margin: 0;">La système de gestion des shaders sera bientôt implémenté. Pour le moment, utilisez la section Texture Packs & Mods.</p>
+            <div style="font-size: 24px; margin-bottom: 16px;">${lucideIcons.download}</div>
+            <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Recherchez un shader</h3>
+            <p style="color: #94a3b8; margin: 0;">Les téléchargements seront placés dans le dossier shaderpacks du jeu.</p>
           </div>
         </div>
       </div>
@@ -422,9 +456,18 @@ class ModsManager {
       <div class="mod-item" data-mod-id="${mod.id}" data-name="${this.escapeAttribute(mod.name)}" data-version="${this.escapeAttribute(mod.version || '')}" data-file-name="${this.escapeAttribute(mod.fileName || '')}" data-path="${this.escapeAttribute(mod.path || '')}" data-enabled="${mod.enabled ? 'true' : 'false'}" data-dependency="${mod.isDependency ? 'true' : 'false'}" data-size-bytes="${this.parseSizeToBytes(mod.size)}" data-imported-at="${this.escapeAttribute(mod.importedAt || '')}" data-game-version="${this.escapeAttribute(mod.gameVersion || '')}" data-loader="${this.escapeAttribute(mod.loader || '')}" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: all 0.3s; width: 100%; min-width: 0; margin-bottom: 12px; cursor: pointer;">
         <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
           <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer; flex-shrink: 0;">
+          
+          <!-- MOD IMAGE -->
+          <div style="width: 48px; height: 48px; min-width: 48px; min-height: 48px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            ${mod.image 
+              ? `<img src="${mod.image}" alt="${this.escapeAttribute(mod.name)}" style="width: 100%; height: 100%; object-fit: cover;">` 
+              : `<div style="font-size: 24px;">${lucideIcons.package}</div>`
+            }
+          </div>
+          
           <div style="flex: 1; min-width: 0;">
             <div style="font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              <span style="flex-shrink: 0;">${mod.enabled ? '✅' : '❌'}</span>
+              <span style="flex-shrink: 0; font-size: 16px; color: ${mod.enabled ? '#22c55e' : '#ef4444'};">${mod.enabled ? lucideIcons.checkCircle2 : lucideIcons.xCircle}</span>
               <span style="overflow: hidden; text-overflow: ellipsis;">${mod.name}</span>
             </div>
             <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
@@ -515,7 +558,9 @@ class ModsManager {
     return `
       <div class="resourcepack-item" data-pack-name="${this.escapeHtml(pack.name || '')}" data-file-name="${this.escapeHtml(pack.fileName || '')}" data-pack-path="${this.escapeHtml(pack.path || '')}" data-pack-size="${this.escapeHtml(pack.size || '')}" data-pack-type="${this.escapeHtml(pack.type || '')}" data-imported-at="${this.escapeHtml(pack.importedAt || '')}" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: all 0.3s; width: 100%; min-width: 0; margin-bottom: 12px; cursor: pointer;">
         <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
-          <div style="width: 20px; text-align: center; flex-shrink: 0;">${pack.type === 'folder' ? '📁' : '🖼️'}</div>
+          <div style="width: 48px; height: 48px; min-width: 48px; border-radius: 8px; background: rgba(51, 65, 85, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(99, 102, 241, 0.2); transition: all 0.3s;">
+            ${pack.image ? `<img src="${pack.image}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="display: flex; width: 20px; height: 20px; color: #94a3b8;">${lucideIcons.palette}</div>`}
+          </div>
           <div style="flex: 1; min-width: 0;">
             <div style="font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; min-width: 0;">
               <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${this.escapeHtml(pack.name || pack.fileName || 'Texture pack')}</span>
@@ -538,7 +583,7 @@ class ModsManager {
     return `
       <div style="max-width: 1000px; margin-bottom: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
         ${this.renderStatCard('Packs installés', packs.length, lucideIcons.download)}
-        ${this.renderStatCard('Archives', archiveCount, '🗜️', '#22c55e')}
+        ${this.renderStatCard('Archives', archiveCount, lucideIcons.archive, '#22c55e')}
         ${this.renderStatCard('Dossiers', folderCount, lucideIcons.folder, '#f59e0b')}
       </div>
     `;
@@ -549,6 +594,84 @@ class ModsManager {
       <div style="max-width: 1000px; padding: 20px; margin-bottom: 30px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
         <p style="color: #cbd5e1; margin: 0; font-size: 14px;">
           <strong style="color: #6366f1;">Info :</strong> Les noms longs sont tronqués dans la liste, mais vous pouvez cliquer sur un pack pour afficher ses détails complets ou le supprimer.
+        </p>
+      </div>
+    `;
+  }
+
+  // ✅ Helpers pour shaders
+  renderEmptyShaders() {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px;">
+        <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 60px 20px; text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 16px; display: flex; justify-content: center;">${lucideIcons.download}</div>
+          <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 18px;">Aucun shader installé</h3>
+          <p style="color: #94a3b8; margin: 0;">Utilisez la recherche Modrinth ci-dessous pour télécharger votre premier shader.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  renderInstalledShadersList(shaders) {
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+          <h2 style="margin: 0; color: #e2e8f0; font-size: 20px;">Shaders installés</h2>
+          <div style="color: #94a3b8; font-size: 12px;">Cliquez sur un shader pour voir ses détails.</div>
+        </div>
+        <div id="shaders-list-container" style="display: block; width: 100%;">
+          ${shaders.map((shader) => this.renderShaderItem(shader)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderShaderItem(shader) {
+    const details = [
+      `Fichier : ${shader.fileName || 'Inconnu'}`,
+      `Type : ${shader.type === 'folder' ? 'Dossier' : 'Archive'}`,
+      `Taille : ${shader.size || 'N/A'}`
+    ].join(' • ');
+
+    return `
+      <div class="shader-item" data-shader-name="${this.escapeHtml(shader.name || '')}" data-file-name="${this.escapeHtml(shader.fileName || '')}" data-shader-path="${this.escapeHtml(shader.path || '')}" data-shader-size="${this.escapeHtml(shader.size || '')}" data-shader-type="${this.escapeHtml(shader.type || '')}" data-imported-at="${this.escapeHtml(shader.importedAt || '')}" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: all 0.3s; width: 100%; min-width: 0; margin-bottom: 12px; cursor: pointer;">
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+          <div style="width: 48px; height: 48px; min-width: 48px; border-radius: 8px; background: rgba(51, 65, 85, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(99, 102, 241, 0.2); transition: all 0.3s;">
+            ${shader.image ? `<img src="${shader.image}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="display: flex; width: 20px; height: 20px; color: #cbd5e1;">${lucideIcons.sparkles}</div>`}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${this.escapeHtml(shader.name || shader.fileName || 'Shader')}</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${this.escapeHtml(details)}
+            </div>
+          </div>
+        </div>
+        <button class="btn-delete-shader" data-shader-path="${this.escapeHtml(shader.path || '')}" data-shader-name="${this.escapeHtml(shader.name || '')}" title="Supprimer ce shader" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 8px; transition: all 0.3s; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-shrink: 0;">
+          ${lucideIcons.trash3}
+        </button>
+      </div>
+    `;
+  }
+
+  renderShaderStats(shaders) {
+    const folderCount = shaders.filter((shader) => shader.type === 'folder').length;
+    const archiveCount = shaders.length - folderCount;
+    return `
+      <div style="max-width: 1000px; margin-bottom: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        ${this.renderStatCard('Shaders installés', shaders.length, lucideIcons.sparkles)}
+        ${this.renderStatCard('Archives', archiveCount, lucideIcons.archive, '#22c55e')}
+        ${this.renderStatCard('Dossiers', folderCount, lucideIcons.folder, '#f59e0b')}
+      </div>
+    `;
+  }
+
+  renderShaderInfo() {
+    return `
+      <div style="max-width: 1000px; padding: 20px; margin-bottom: 30px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
+        <p style="color: #cbd5e1; margin: 0; font-size: 14px;">
+          <strong style="color: #6366f1;">Info :</strong> Les shaders doivent être compatibles avec votre version de Minecraft et votre mod loader. Assurez-vous d'avoir les prérequis installés avant d'activer un shader.
         </p>
       </div>
     `;
@@ -692,6 +815,44 @@ class ModsManager {
       return;
     }
 
+    if (e.target.id === 'btn-open-shaders-folder' || e.target.closest('#btn-open-shaders-folder')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const folder = await ipcRenderer.invoke('get-shaders-folder').catch(() => '');
+      if (folder) {
+        ipcRenderer.send('open-folder', folder);
+        this.showToast({
+          title: 'Dossier des shaders ouvert',
+          message: folder,
+          type: 'success'
+        });
+      }
+      return;
+    }
+
+    if (e.target.id === 'btn-refresh-shaders' || e.target.closest('#btn-refresh-shaders')) {
+      e.preventDefault();
+      e.stopPropagation();
+      await this.rerenderModsView();
+      this.showToast({
+        title: 'Shaders recharges',
+        message: 'La liste des shaders a ete mise a jour.',
+        type: 'info'
+      });
+      return;
+    }
+
+    if (e.target.id === 'btn-search-shaders' || e.target.closest('#btn-search-shaders')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const searchInput = document.getElementById('shader-search-input');
+      const query = searchInput?.value?.trim();
+      if (query) {
+        await this.searchShaders(query);
+      }
+      return;
+    }
+
     // DELETE resourcepack
     let deleteResourcepackBtn = e.target.classList.contains('btn-delete-resourcepack') ? e.target : null;
     if (!deleteResourcepackBtn && e.target.closest) {
@@ -704,6 +865,21 @@ class ModsManager {
       const packPath = deleteResourcepackBtn.getAttribute('data-pack-path');
       const packName = deleteResourcepackBtn.getAttribute('data-pack-name') || 'ce texture pack';
       await this.deleteTexturePack(packPath, packName);
+      return;
+    }
+
+    // DELETE shader
+    let deleteShaderBtn = e.target.classList.contains('btn-delete-shader') ? e.target : null;
+    if (!deleteShaderBtn && e.target.closest) {
+      deleteShaderBtn = e.target.closest('.btn-delete-shader');
+    }
+    
+    if (deleteShaderBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const shaderPath = deleteShaderBtn.getAttribute('data-shader-path');
+      const shaderName = deleteShaderBtn.getAttribute('data-shader-name') || 'ce shader';
+      await this.deleteShader(shaderPath, shaderName);
       return;
     }
 
@@ -997,7 +1173,7 @@ class ModsManager {
         <div id="modrinth-dialog" tabindex="-1" style="background: #0f172a; border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 16px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2 style="margin: 0; color: #e2e8f0; display: flex; align-items: center; gap: 8px;"><span style="display: flex; width: 18px; height: 18px;">${lucideIcons.magnifyingGlass}</span> Recherche Modrinth</h2>
-            <button id="close-modrinth-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #94a3b8;">✕</button>
+            <button id="close-modrinth-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #94a3b8; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;">${lucideIcons.closeX}</button>
           </div>
 
           <div style="margin-bottom: 16px; padding: 12px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; color: #cbd5e1; font-size: 12px;">
@@ -1057,7 +1233,7 @@ class ModsManager {
     const resultsContainer = document.getElementById('modrinth-results');
     if (!resultsContainer) return;
 
-    resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">🔄 Recherche en cours...</p>';
+    resultsContainer.innerHTML = `<p style="color: #94a3b8; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px;"><span style="display: inline-flex; font-size: 18px;">${lucideIcons.loader}</span> Recherche en cours...</p>`;
 
     try {
       const response = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=10`);
@@ -1069,7 +1245,10 @@ class ModsManager {
       }
 
       const html = data.hits.map(mod => `
-        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="width: 56px; height: 56px; min-width: 56px; min-height: 56px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            ${mod.icon_url ? `<img src="${mod.icon_url}" alt="${this.escapeHtml(mod.title)}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="font-size: 28px;">${lucideIcons.package}</div>`}
+          </div>
           <div style="flex: 1;">
             <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 4px;">${mod.title}</div>
             <div style="color: #94a3b8; font-size: 12px; margin-bottom: 4px;">${mod.description || 'Aucune description'}</div>
@@ -1483,7 +1662,7 @@ class ModsManager {
       return;
     }
 
-    resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Recherche en cours...</p>';
+    resultsContainer.innerHTML = `<div style="text-align: center; color: #94a3b8;"><div style="display: inline-flex; width: 20px; height: 20px;">${lucideIcons.loader}</div> Recherche en cours...</div>`;
 
     try {
       const gameVersion = this.app.selectedProfile?.version || '';
@@ -1498,13 +1677,16 @@ class ModsManager {
       }
 
       resultsContainer.innerHTML = data.hits.map((pack) => `
-        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start;">
+          <div style="width: 56px; height: 56px; min-width: 56px; border-radius: 8px; background: rgba(51, 65, 85, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(99, 102, 241, 0.2);">
+            ${pack.icon_url ? `<img src="${pack.icon_url}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="display: flex; width: 24px; height: 24px; color: #94a3b8;">${lucideIcons.palette}</div>`}
+          </div>
           <div style="flex: 1; min-width: 0;">
             <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 4px;">${this.escapeHtml(pack.title)}</div>
-            <div style="color: #94a3b8; font-size: 13px; margin-bottom: 6px;">${this.escapeHtml(pack.description || 'Aucune description')}</div>
+            <div style="color: #94a3b8; font-size: 13px; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${this.escapeHtml(pack.description || 'Aucune description')}</div>
             <div style="color: #6366f1; font-size: 12px;">Téléchargements : ${(pack.downloads || 0).toLocaleString()}</div>
           </div>
-          <button class="btn-download-resourcepack" data-pack-id="${this.escapeHtml(pack.project_id || pack.slug)}" data-pack-name="${this.escapeHtml(pack.title)}" style="background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; padding: 10px 14px; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; white-space: nowrap;">Télécharger</button>
+          <button class="btn-download-resourcepack" data-pack-id="${this.escapeHtml(pack.project_id || pack.slug)}" data-pack-name="${this.escapeHtml(pack.title)}" style="background: linear-gradient(135deg, #1bd96a 0%, #0fb857 100%); border: none; padding: 10px 14px; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; white-space: nowrap; align-self: center;">Télécharger</button>
         </div>
       `).join('');
 
@@ -1540,6 +1722,131 @@ class ModsManager {
       await this.showDialog({
         title: 'Erreur de téléchargement',
         message: error.message ||'Une erreur est survenue lors du téléchargement du texture pack.',
+        type: 'error'
+      });
+    }
+  }
+
+  async deleteShader(shaderPath, shaderName = 'ce shader') {
+    if (!shaderPath) {
+      this.showToast({
+        title: 'Erreur',
+        message: 'Chemin invalide',
+        type: 'error'
+      });
+      return;
+    }
+
+    const confirmed = await this.showDialog({
+      title: 'Supprimer le shader ?',
+      message: `Êtes-vous sûr de vouloir supprimer "${shaderName}" ?`,
+      type: 'question'
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const result = await ipcRenderer.invoke('delete-shader', shaderPath);
+
+      if (result?.success) {
+        this.showToast({
+          title: 'Shader supprimé',
+          message: `${shaderName} a été supprimé avec succès.`,
+          type: 'success'
+        });
+        await this.rerenderModsView();
+        return;
+      }
+
+      this.showToast({
+        title: 'Suppression impossible',
+        message: result?.message || 'Impossible de supprimer ce shader.',
+        type: 'error'
+      });
+    } catch (error) {
+      console.error('Erreur suppression shader:', error);
+      this.showToast({
+        title: 'Erreur',
+        message: 'Une erreur est survenue lors de la suppression.',
+        type: 'error'
+      });
+    }
+  }
+
+  async searchShaders(query = '') {
+    const resultsContainer = document.getElementById('shaders-results');
+    if (!resultsContainer) return;
+
+    const searchQuery = query || document.getElementById('shader-search-input')?.value?.trim() || '';
+    if (!searchQuery) {
+      this.showToast({
+        title: 'Recherche vide',
+        message: 'Entrez un nom de shader.',
+        type: 'info'
+      });
+      return;
+    }
+
+    resultsContainer.innerHTML = `<div style="text-align: center; color: #94a3b8;"><div style="display: inline-flex; width: 20px; height: 20px;">${lucideIcons.loader}</div> Recherche en cours...</div>`;
+
+    try {
+      const gameVersion = this.app.selectedProfile?.version || '';
+      const facets = encodeURIComponent(JSON.stringify([['project_type:shader']]));
+      const versionParam = gameVersion ? `&versions=${encodeURIComponent(JSON.stringify([gameVersion]))}` : '';
+      const response = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(searchQuery)}&limit=12&facets=${facets}${versionParam}`);
+      const data = await response.json();
+
+      if (!data.hits || data.hits.length === 0) {
+        resultsContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">Aucun shader trouvé</p>';
+        return;
+      }
+
+      resultsContainer.innerHTML = data.hits.map((shader) => `
+        <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start;">
+          <div style="width: 56px; height: 56px; min-width: 56px; border-radius: 8px; background: rgba(51, 65, 85, 0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(99, 102, 241, 0.2);">
+            ${shader.icon_url ? `<img src="${shader.icon_url}" style="width: 100%; height: 100%; object-fit: cover;">` : `<div style="display: flex; width: 24px; height: 24px; color: #cbd5e1;">${lucideIcons.sparkles}</div>`}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 4px;">${this.escapeHtml(shader.title)}</div>
+            <div style="color: #94a3b8; font-size: 13px; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${this.escapeHtml(shader.description || 'Aucune description')}</div>
+            <div style="color: #6366f1; font-size: 12px;">Téléchargements : ${(shader.downloads || 0).toLocaleString()}</div>
+          </div>
+          <button class="btn-download-shader" data-shader-id="${this.escapeHtml(shader.project_id || shader.slug)}" data-shader-name="${this.escapeHtml(shader.title)}" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; padding: 10px 14px; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; white-space: nowrap; align-self: center;">Télécharger</button>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.btn-download-shader').forEach((button) => {
+        button.addEventListener('click', async () => {
+          await this.downloadShader(button.dataset.shaderId, button.dataset.shaderName);
+        });
+      });
+    } catch (error) {
+      console.error('Erreur recherche shaders:', error);
+      resultsContainer.innerHTML = '<p style="color: #ef4444; text-align: center;">Erreur pendant la recherche.</p>';
+    }
+  }
+
+  async downloadShader(projectId, shaderName) {
+    try {
+      const result = await ipcRenderer.invoke('download-modrinth-shader', projectId, shaderName, {
+        gameVersion: this.app.selectedProfile?.version
+      });
+
+      if (result?.success) {
+        await this.rerenderModsView();
+        await this.showDialog({
+          title: 'Shader téléchargé',
+          message: `${shaderName} a été téléchargé et est installé dans le dossier shaderpacks.`,
+          type: 'success'
+        });
+      } else {
+        throw new Error(result?.message || 'Erreur lors du téléchargement');
+      }
+    } catch (error) {
+      console.error('Erreur téléchargement shader:', error);
+      await this.showDialog({
+        title: 'Erreur de téléchargement',
+        message: error.message || 'Une erreur est survenue lors du téléchargement du shader.',
         type: 'error'
       });
     }

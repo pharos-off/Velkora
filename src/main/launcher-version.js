@@ -6,10 +6,10 @@
 const LauncherVersion = {
   // Informations principales
   name: 'VelkoraMC',
-  version: '4.1.3',
-  versionName: '4.1.3',
-  build: '20260415',
-  releaseDate: '2026-04-15',
+  version: '4.1.4',
+  versionName: '4.1.4',
+  build: '20260416',
+  releaseDate: '2026-04-16',
   channel: 'stable', // stable, beta, dev
   
   // Informations du développeur

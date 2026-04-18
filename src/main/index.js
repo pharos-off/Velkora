@@ -14,10 +14,13 @@ const fetch = require('node-fetch');
 const mc = require('minecraft-protocol');
 const fs = require('fs');
 const os = require('os');
+const AdmZip = require('adm-zip');
+const { promisify } = require('util');
+const readFile = promisify(fs.readFile);
 
 
-const LAUNCHER_VERSION = '4.0.2';
-const LAUNCHER_BUILD = '20260415';
+const LAUNCHER_VERSION = '4.1.4';
+const LAUNCHER_BUILD = '20260416';
 const LAUNCHER_NAME = 'VelkoraMC';
 const __emojiMap = {
   '✅': '[OK]',
@@ -78,6 +81,11 @@ function getResourcePacksDir() {
   const gameDir = getGameDir();
   return path.join(gameDir, 'resourcepacks');
 }
+
+function getShadersDir() {
+  const gameDir = getGameDir();
+  return path.join(gameDir, 'shaderpacks');
+}
  
  const MODS_DB_FILE = path.join(app.getPath('userData'), 'mods.json');
 app.setAsDefaultProtocolClient('minecraft');
@@ -104,6 +112,18 @@ function initResourcePacksDirectory() {
     }
   } catch (error) {
     console.error('Error creating resourcepacks folder:', error);
+  }
+}
+
+function initShadersDirectory() {
+  try {
+    const shadersDir = getShadersDir();
+    if (!fs.existsSync(shadersDir)) {
+      fs.mkdirSync(shadersDir, { recursive: true });
+      console.log('📁 Shaderpacks folder created:', shadersDir);
+    }
+  } catch (error) {
+    console.error('Error creating shaderpacks folder:', error);
   }
 }
 
@@ -2866,6 +2886,77 @@ function normalizeStoredModFileName(fileName) {
     : rawName;
 }
 
+/**
+ * ✅ EXTRAIRE L'IMAGE D'UN MOD
+ * Cherche le logo du mod dans le JAR et le retourne en base64
+ */
+async function extractModImage(modPath) {
+  try {
+    // Vérifier que le fichier existe
+    if (!fs.existsSync(modPath)) {
+      return null;
+    }
+
+    // Si c'est un fichier RAR, on peut pas l'extraire facilement sans dépendance externe
+    if (modPath.toLowerCase().endsWith('.rar')) {
+      console.log(`[IMG] RAR file detected: ${modPath}, skipping image extraction`);
+      return null;
+    }
+
+    const zip = new AdmZip(modPath);
+    const entries = zip.getEntries();
+
+    // Chercher les fichiers images courants - patterns spécifiques d'abord
+    const imagePatterns = [
+      /^assets\/.+\/textures\/gui\/icon\.(png|jpg|jpeg)$/i,
+      /^assets\/.+\/icon\.(png|jpg|jpeg)$/i,
+      /^icon\.(png|jpg|jpeg)$/i,
+      /^assets\/icon\.(png|jpg|jpeg)$/i,
+      /^logo\.(png|jpg|jpeg)$/i,
+      /^modicon\.(png|jpg|jpeg)$/i,
+      /^thumbnail\.(png|jpg|jpeg)$/i,
+      /^pack\.png$/i,
+      /^pack\.jpg$/i,
+      /^shaders\/.+\.png$/i,  // Pour les shaders
+      /^shaders\/.+\.jpg$/i
+    ];
+
+    // Chercher une image correspondant aux patterns
+    for (const pattern of imagePatterns) {
+      const imageEntry = entries.find(entry => pattern.test(entry.entryName));
+      if (imageEntry) {
+        const imageBuffer = zip.readFile(imageEntry);
+        const ext = imageEntry.entryName.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+        console.log(`[IMG] Found image at: ${imageEntry.entryName}`);
+        return `data:image/${ext};base64,` + imageBuffer.toString('base64');
+      }
+    }
+
+    // Fallback: prendre la première image PNG/JPG trouvée n'importe où dans le ZIP
+    // Priorité aux images qui ne sont pas trop profondément imbriquées
+    const imagesByDepth = entries
+      .filter(entry => !entry.isDirectory && /\.(png|jpg|jpeg)$/i.test(entry.entryName.toLowerCase()))
+      .sort((a, b) => {
+        const depthA = a.entryName.split('/').length;
+        const depthB = b.entryName.split('/').length;
+        return depthA - depthB;
+      });
+
+    if (imagesByDepth.length > 0) {
+      const firstImage = imagesByDepth[0];
+      const imageBuffer = zip.readFile(firstImage);
+      const ext = firstImage.entryName.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+      console.log(`[IMG] Found image at (fallback): ${firstImage.entryName}`);
+      return `data:image/${ext};base64,` + imageBuffer.toString('base64');
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`[IMG] Error extracting image from ${modPath}:`, error.message);
+    return null;
+  }
+}
+
 function listModsFromDirectory() {
   const modsDir = getModsDir();
   if (!fs.existsSync(modsDir)) {
@@ -2889,7 +2980,8 @@ function listModsFromDirectory() {
         size: formatFileSize(stat.size),
         sizeBytes: stat.size,
         enabled: !actualName.endsWith('.disabled'),
-        importedAt: stat.mtime.toISOString()
+        importedAt: stat.mtime.toISOString(),
+        image: null // Sera rempli de manière asynchrone
       };
     })
     .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
@@ -2996,7 +3088,24 @@ function formatFileSize(bytes) {
 // 📥 Récupérer tous les mods installés
 ipcMain.handle('get-installed-mods', async () => {
   try {
-    return loadModsDB();
+    const mods = loadModsDB();
+    
+    // Extraire les images des mods de manière asynchrone
+    const modsWithImages = await Promise.all(mods.map(async (mod) => {
+      if (!mod.image && mod.path && fs.existsSync(mod.path)) {
+        try {
+          const image = await extractModImage(mod.path);
+          if (image) {
+            mod.image = image;
+          }
+        } catch (error) {
+          console.warn(`Erreur extraction image pour ${mod.name}:`, error.message);
+        }
+      }
+      return mod;
+    }));
+    
+    return modsWithImages;
   } catch (error) {
     console.error('Erreur get-installed-mods:', error);
     return [];
@@ -3148,12 +3257,88 @@ function listInstalledResourcePacks() {
 
 ipcMain.handle('get-installed-resourcepacks', async () => {
   try {
-    return listInstalledResourcePacks();
+    initResourcePacksDirectory();
+    const resourcePacksDir = getResourcePacksDir();
+    const supportedExtensions = new Set(['.zip', '.mcpack']);
+
+    const entries = fs.readdirSync(resourcePacksDir, { withFileTypes: true })
+      .filter((entry) => {
+        if (entry.name.startsWith('.')) return false;
+        if (entry.isDirectory()) return true;
+        return supportedExtensions.has(path.extname(entry.name).toLowerCase());
+      })
+      .map((entry, index) => {
+        const filePath = path.join(resourcePacksDir, entry.name);
+        const stat = fs.statSync(filePath);
+        const sizeBytes = entry.isDirectory() ? getDirectorySize(filePath) : stat.size;
+        const fileName = entry.name;
+
+        return {
+          id: `${stat.mtimeMs}-${index}-${fileName}`,
+          name: entry.isDirectory() ? fileName : fileName.replace(path.extname(fileName), ''),
+          fileName,
+          path: filePath,
+          size: formatFileSize(sizeBytes),
+          sizeBytes,
+          importedAt: stat.mtime.toISOString(),
+          type: entry.isDirectory() ? 'folder' : 'archive'
+        };
+      })
+      .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
+
+    // Extraire les images asynchronement (seulement pour les archives, pas les dossiers)
+    const packsWithImages = await Promise.all(entries.map(async (pack) => {
+      try {
+        // Ignorer l'extraction d'image pour les dossiers
+        if (pack.type === 'folder') {
+          return { ...pack, image: null };
+        }
+        const image = await extractModImage(pack.path);
+        console.log(`[IMG] Resourcepack ${pack.name}: ${image ? 'trouvée' : 'non trouvée'}`);
+        return { ...pack, image };
+      } catch (error) {
+        console.warn(`[IMG] Erreur extraction resourcepack ${pack.name}:`, error.message);
+        return { ...pack, image: null };
+      }
+    }));
+
+    return packsWithImages;
   } catch (error) {
     console.error('Erreur get-installed-resourcepacks:', error);
     return [];
   }
 });
+
+function listInstalledShaders() {
+  initShadersDirectory();
+  const shadersDir = getShadersDir();
+  const supportedExtensions = new Set(['.zip', '.rar']);
+
+  return fs.readdirSync(shadersDir, { withFileTypes: true })
+    .filter((entry) => {
+      if (entry.name.startsWith('.')) return false;
+      if (entry.isDirectory()) return true;
+      return supportedExtensions.has(path.extname(entry.name).toLowerCase());
+    })
+    .map((entry, index) => {
+      const filePath = path.join(shadersDir, entry.name);
+      const stat = fs.statSync(filePath);
+      const sizeBytes = entry.isDirectory() ? getDirectorySize(filePath) : stat.size;
+      const fileName = entry.name;
+
+      return {
+        id: `${stat.mtimeMs}-${index}-${fileName}`,
+        name: entry.isDirectory() ? fileName : fileName.replace(path.extname(fileName), ''),
+        fileName,
+        path: filePath,
+        size: formatFileSize(sizeBytes),
+        sizeBytes,
+        importedAt: stat.mtime.toISOString(),
+        type: entry.isDirectory() ? 'folder' : 'archive'
+      };
+    })
+    .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
+}
 
 ipcMain.handle('delete-resourcepack', async (event, packPath) => {
   try {
@@ -3569,6 +3754,32 @@ async function downloadResourcePackToFolder(projectData, versionData, packFile, 
   };
 }
 
+async function downloadShaderToFolder(projectData, versionData, shaderFile, headers, metadata = {}) {
+  initShadersDirectory();
+
+  const shadersDir = getShadersDir();
+  const filePath = path.join(shadersDir, shaderFile.filename);
+  console.log(`📥 Téléchargement shader: ${shaderFile.url}`);
+
+  const fileResponse = await fetch(shaderFile.url, { headers });
+  if (!fileResponse.ok) {
+    throw new Error(`Téléchargement échoué (HTTP ${fileResponse.status})`);
+  }
+
+  const buffer = await fileResponse.buffer();
+  fs.writeFileSync(filePath, buffer);
+  console.log(`✅ Shader sauvegardé: ${filePath}`);
+
+  return {
+    installed: true,
+    skipped: false,
+    shaderName: projectData.title,
+    filePath,
+    version: versionData.version_number,
+    gameVersion: metadata.gameVersion || null
+  };
+}
+
 async function installModrinthProject(projectId, profileContext, visitedProjects = new Set(), installState = null) {
   const state = installState || {
     installed: [],
@@ -3779,6 +3990,160 @@ ipcMain.handle('download-modrinth-resourcepack', async (event, projectId, packNa
     };
   } catch (error) {
     console.error('❌ Erreur texture pack Modrinth:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// ✅ GESTIONNAIRE DES SHADERS
+
+ipcMain.handle('get-shaders-folder', async () => {
+  initShadersDirectory();
+  return getShadersDir();
+});
+
+ipcMain.handle('get-installed-shaders', async () => {
+  try {
+    initShadersDirectory();
+    const shadersDir = getShadersDir();
+    const supportedExtensions = new Set(['.zip', '.rar']);
+
+    const entries = fs.readdirSync(shadersDir, { withFileTypes: true })
+      .filter((entry) => {
+        if (entry.name.startsWith('.')) return false;
+        if (entry.isDirectory()) return true;
+        return supportedExtensions.has(path.extname(entry.name).toLowerCase());
+      })
+      .map((entry, index) => {
+        const filePath = path.join(shadersDir, entry.name);
+        const stat = fs.statSync(filePath);
+        const sizeBytes = entry.isDirectory() ? getDirectorySize(filePath) : stat.size;
+        const fileName = entry.name;
+
+        return {
+          id: `${stat.mtimeMs}-${index}-${fileName}`,
+          name: entry.isDirectory() ? fileName : fileName.replace(path.extname(fileName), ''),
+          fileName,
+          path: filePath,
+          size: formatFileSize(sizeBytes),
+          sizeBytes,
+          importedAt: stat.mtime.toISOString(),
+          type: entry.isDirectory() ? 'folder' : 'archive'
+        };
+      })
+      .sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
+
+    // Extraire les images asynchronement (seulement pour les archives, pas les dossiers)
+    const shadersWithImages = await Promise.all(entries.map(async (shader) => {
+      try {
+        // Ignorer l'extraction d'image pour les dossiers
+        if (shader.type === 'folder') {
+          return { ...shader, image: null };
+        }
+        const image = await extractModImage(shader.path);
+        console.log(`[IMG] Shader ${shader.name}: ${image ? 'trouvée' : 'non trouvée'}`);
+        return { ...shader, image };
+      } catch (error) {
+        console.warn(`[IMG] Erreur extraction shader ${shader.name}:`, error.message);
+        return { ...shader, image: null };
+      }
+    }));
+
+    return shadersWithImages;
+  } catch (error) {
+    console.error('Erreur get-installed-shaders:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('delete-shader', async (event, shaderPath) => {
+  try {
+    const shadersDir = path.normalize(getShadersDir());
+    const normalizedShaderPath = path.normalize(String(shaderPath || '').trim());
+
+    if (!normalizedShaderPath || !normalizedShaderPath.startsWith(shadersDir)) {
+      return { success: false, message: 'Chemin du shader invalide' };
+    }
+
+    if (!fs.existsSync(normalizedShaderPath)) {
+      return { success: false, message: 'Shader introuvable' };
+    }
+
+    const stat = fs.statSync(normalizedShaderPath);
+
+    if (stat.isDirectory()) {
+      fs.rmSync(normalizedShaderPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(normalizedShaderPath);
+    }
+
+    console.log(`✅ Shader supprimé: ${normalizedShaderPath}`);
+    return { success: true, message: 'Shader supprimé avec succès' };
+  } catch (error) {
+    console.error('Erreur delete-shader:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('download-modrinth-shader', async (event, projectId, shaderName, profileContext = {}) => {
+  try {
+    console.log(`📥 Téléchargement shader Modrinth: ${shaderName} (ID: ${projectId})`);
+
+    if (!projectId || projectId === 'undefined' || projectId === '') {
+      throw new Error('ID du projet invalide');
+    }
+
+    const headers = getModrinthHeaders();
+    const gameVersion = String(profileContext?.gameVersion || '').trim();
+    const projectData = await fetchJsonOrThrow(
+      `https://api.modrinth.com/v2/project/${projectId}`,
+      headers,
+      `Réponse shader ${projectId}`
+    );
+
+    const versionAttempts = [
+      buildModrinthVersionsUrl(projectId, { gameVersion }, false, true),
+      buildModrinthVersionsUrl(projectId, {}, false, false)
+    ];
+
+    let versions = [];
+    for (const url of versionAttempts) {
+      try {
+        const response = await fetchJsonOrThrow(url, headers, `Versions shader (${url})`);
+        if (Array.isArray(response) && response.length > 0) {
+          versions = response;
+          break;
+        }
+      } catch (error) {
+        console.warn(`⚠️ Tentative shader échouée: ${error.message}`);
+      }
+    }
+
+    if (!versions.length) {
+      throw new Error(`Aucune version compatible disponible pour ${shaderName}`);
+    }
+
+    const selectedVersion = versions[0];
+    const selectedFile = selectPrimaryResourcePackFile(selectedVersion);
+    if (!selectedFile?.url) {
+      throw new Error(`Aucun fichier telechargeable trouve pour ${shaderName}`);
+    }
+
+    const result = await downloadShaderToFolder(
+      projectData,
+      selectedVersion,
+      selectedFile,
+      headers,
+      { gameVersion }
+    );
+
+    return {
+      success: true,
+      message: `${shaderName} a ete telecharge dans le dossier shaderpacks.`,
+      filePath: result.filePath,
+      version: result.version
+    };
+  } catch (error) {
+    console.error('❌ Erreur shader Modrinth:', error);
     return { success: false, message: error.message };
   }
 });
