@@ -87,15 +87,10 @@ VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence person
 
 ### v5.0.0 🚀 (Prochainement)
 - ⏳ Téléchargement de mods depuis CurseForge
-- ⏳ Gestionnaire de sauvegardes
-- ⏳ Support des datapacks
 - ⏳ Statistiques avancées
 
 ### v6.0.0 🎯 (Futur)
 - ⏳ Support natif macOS/Linux
-- ⏳ Installation de shaders
-- ⏳ Serveur multi-joueurs intégré
-- ⏳ Marketplace de mods
 
 ---
 
