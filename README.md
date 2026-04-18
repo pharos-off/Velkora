@@ -2,7 +2,7 @@
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
-![Version](https://img.shields.io/badge/version-3.9.2-blue.svg)
+![Version](https://img.shields.io/badge/version-4.1.4-blue.svg)
 ![License](https://img.shields.io/badge/license-CLv1-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-red.svg)
 
