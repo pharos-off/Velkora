@@ -89,14 +89,10 @@ class CraftLauncherApp {
     this.fallbackAvatar = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" rx="20" ry="20" fill="#1e293b"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="48" fill="#94a3b8">👤</text></svg>');
 
     this.popularServers = [
-      { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '—' },
-      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '—' },
-      { name: 'PikaNetwork', ip: 'play.pika-network.net', description: 'Skyblock, Factions, PvP', players: '—' },
-      { name: 'Jartex', ip: 'jartex.fun', description: 'Mini-jeux & Practice', players: '—' },
-      { name: 'ManaCube', ip: 'play.manacube.com', description: 'Parkour, MMO, Survie', players: '—' },
-      { name: 'BlocksMC', ip: 'play.blocksmc.com', description: 'BedWars, SkyWars', players: '—' },
-      { name: 'Wynncraft', ip: 'play.wynncraft.com', description: 'MMORPG Minecraft', players: '—' },
-      { name: 'Minehut', ip: 'play.minehut.com', description: 'Réseau de serveurs', players: '—' },
+      { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '—', icon: 'https://hypixel.net/favicon.ico' },
+      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '—', icon: 'https://www.google.com/s2/favicons?domain=cubecraft.net&sz=256' },
+      { name: 'BlocksMC', ip: 'play.blocksmc.com', description: 'BedWars, SkyWars', players: '—', icon: 'https://www.google.com/s2/favicons?domain=blocksmc.com&sz=256' },
+      { name: 'Minehut', ip: 'play.minehut.com', description: 'Réseau de serveurs', players: '—', icon: 'https://minehut.com/favicon.ico' },
     ];
     this.init();
   }
@@ -380,11 +376,11 @@ class CraftLauncherApp {
       }
       else if (e.target.classList.contains('bug-report-btn')) {
         // Ouvrir le lien GitHub pour créer un rapport
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/VelkoraMC/issues/new');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora/issues/new');
       }
       else if (e.target.classList.contains('pr-request-btn')) {
         // Ouvrir le lien GitHub pour les pull requests
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/VelkoraMC/pulls');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora/pulls');
       }
     });
 
@@ -462,6 +458,20 @@ class CraftLauncherApp {
       // Afficher le layout principal d'abord
       const mainHtml = this.renderMainLayout();
       appContainer.innerHTML = mainHtml;
+      
+      // ✅ CHARGER LE LOGO DYNAMIQUEMENT
+      setTimeout(() => {
+        const logoImg = document.getElementById('titlebar-logo');
+        if (logoImg) {
+          try {
+            const path = require('path');
+            const iconPath = path.join(__dirname, '../../assets/icon.ico');
+            logoImg.src = `file://${iconPath}`;
+          } catch (e) {
+            console.warn('Impossible de charger le logo:', e.message);
+          }
+        }
+      }, 0);
       
       // ✅ APPLIQUER LE THÈME LIGHT/DARK INITIAL (PARTOUT)
       const theme = localStorage.getItem('theme') || 'dark';
@@ -679,7 +689,7 @@ renderMainLayout() {
     return `
       <div class="titlebar">
         <div class="titlebar-title" style="display: flex; align-items: center; gap: 8px;">
-          <img src="../../assets/icon.ico" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
+          <img id="titlebar-logo" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
           <span>${LauncherVersion.getName()}</span>
         </div>
         <div class="titlebar-buttons">
@@ -771,7 +781,7 @@ renderMainLayout() {
     return `
       <div class="titlebar">
         <div class="titlebar-title" style="display: flex; align-items: center; gap: 8px;">
-          <img src="../../assets/icon.ico" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
+          <img id="titlebar-logo" alt="Velkora" style="width: 16px; height: 16px; border-radius: 4px; object-fit: contain;">
           <span>${LauncherVersion.getName()}</span>
         </div>
         <div class="titlebar-buttons">
@@ -1336,27 +1346,9 @@ renderMainLayout() {
           </div>
 
           ${availableLoaders.length > 0 ? `
-            <div class="loader-submenu">
+            <div class="loader-submenu" style="opacity: 0.5; pointer-events: none; cursor: not-allowed;">
               <div class="loader-submenu-label">Mode de lancement</div>
-              <div class="loader-options">
-                <button
-                  type="button"
-                  class="loader-option-btn ${activeLaunchLoader === 'vanilla' ? 'active' : ''}"
-                  data-loader-option="vanilla"
-                >
-                  Sans loader
-                </button>
-                ${availableLoaders.map(item => `
-                  <button
-                    type="button"
-                    class="loader-option-btn ${activeLaunchLoader === item.loader ? 'active' : ''}"
-                    data-loader-option="${item.loader}"
-                  >
-                    ${item.label}
-                  </button>
-                `).join('')}
-              </div>
-              <p class="loader-submenu-hint" id="loader-selection-hint">${loaderHint}</p>
+              <p style="font-size: 12px; color: #94a3b8;">Modifiez le loader dans la section Mods</p>
             </div>
           ` : ''}
 
@@ -1441,29 +1433,6 @@ renderMainLayout() {
                 </div>
                 <button class="server-join-btn" data-join-quick="play.cubecraft.net">Rejoindre</button>
               </div>
-              <div class="server-item" data-server="play.pika-network.net">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">PikaNetwork</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.pika-network.net">Rejoindre</button>
-              </div>
-              <div class="server-item" data-server="jartex.fun">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">Jartex</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="jartex.fun">Rejoindre</button>
-              </div>
-              <div class="server-item" data-server="play.manacube.com">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">ManaCube</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.manacube.com">Rejoindre</button>
               </div>
               <div class="server-item" data-server="play.blocksmc.com">
                 <div class="server-dot online"></div>
@@ -1473,14 +1442,6 @@ renderMainLayout() {
                 </div>
                 <button class="server-join-btn" data-join-quick="play.blocksmc.com">Rejoindre</button>
               </div>
-              <div class="server-item" data-server="play.wynncraft.com">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">Wynncraft</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.wynncraft.com">Rejoindre</button>
-              </div>
               <div class="server-item" data-server="play.minehut.com">
                 <div class="server-dot online"></div>
                 <div class="server-info">
@@ -1489,25 +1450,8 @@ renderMainLayout() {
                 </div>
                 <button class="server-join-btn" data-join-quick="play.minehut.com">Rejoindre</button>
               </div>
-              <div class="server-item" data-server="play.bedwarspractice.club">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">BedWars Practice</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.bedwarspractice.club">Rejoindre</button>
-              </div>
-              <div class="server-item" data-server="play.herobrine.org">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">Herobrine.org</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.herobrine.org">Rejoindre</button>
-              </div>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -1749,7 +1693,7 @@ renderMainLayout() {
         .launch-button-mega {
           width: 100%;
           padding: 24px;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
           border: none;
           border-radius: 16px;
           color: white;
@@ -1763,7 +1707,7 @@ renderMainLayout() {
           gap: 12px;
           position: relative;
           overflow: hidden;
-          box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+          box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
         }
 
         .launch-button-mega::before {
@@ -1783,7 +1727,7 @@ renderMainLayout() {
 
         .launch-button-mega:hover {
           transform: translateY(-2px);
-          box-shadow: 0 12px 32px rgba(99, 102, 241, 0.4);
+          box-shadow: 0 12px 32px rgba(16, 185, 129, 0.4);
         }
 
         .launch-button-mega:active {
@@ -2104,7 +2048,7 @@ renderMainLayout() {
         <div class="servers-grid" style="position: relative; pointer-events: auto;">
           ${this.popularServers.map(s => `
             <div class="server-card" data-server-ip="${s.ip}">
-              <div class="server-icon">${s.name[0]}</div>
+              <div class="server-icon" style="background-image: url('${s.icon}'); background-size: cover; background-position: center; background-repeat: no-repeat; width: 60px; height: 60px; border-radius: 12px; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); image-rendering: crisp-edges;"></div>
               <div class="server-info">
                 <h3>${s.name}</h3>
                 <p class="server-ip">${s.ip}</p>
@@ -2118,15 +2062,15 @@ renderMainLayout() {
           `).join('')}
         </div>
 
-        <div style="margin-top: 40; pointer-events: auto;">
-          <h2 style="font-size: 20px; margin-bottom: 15px;">Serveur personnalisé</h2>
-          <div class="custom-server-input">
-            <input type="text" class="input-field" id="custom-server-ip" placeholder="Ex: play.hypixel.net" style="flex: 1;">
-            <button class="btn-primary" id="join-custom-server" style="display: flex; align-items: center; justify-content: center; gap: 8px;">${icons.globe} Rejoindre</button>
-          </div>
+        <div style="margin-top: 40px; pointer-events: auto; display: flex; gap: 15px; flex-wrap: wrap;">
         </div>
 
-        <div style="margin-top: 40px; pointer-events: auto; display: flex; gap: 15px; flex-wrap: wrap;">
+        <div style="margin-top: 60px; pointer-events: auto;">
+          <h2 style="font-size: 18px; margin-bottom: 15px; color: #e2e8f0;">Serveur personnalisé</h2>
+          <div class="custom-server-input" style="display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
+            <input type="text" class="input-field" id="custom-server-ip" placeholder="Ex: play.hypixel.net" style="width: 100%;">
+            <button class="btn-primary" id="join-custom-server" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">${icons.globe} Rejoindre</button>
+          </div>
         </div>
       </div>
 
@@ -3074,6 +3018,23 @@ renderMainLayout() {
       this.render();
     });
 
+    // 🎮 SIGNAL QUAND LE JEU FERME
+    ipcRenderer.on('game-closed', (event, { code }) => {
+      console.log(`🎮 Le jeu a fermé avec le code: ${code}`);
+      const launchBtn = document.getElementById('launch-btn');
+      if (launchBtn) {
+        launchBtn.disabled = false;
+        launchBtn.style.opacity = '1';
+        launchBtn.style.cursor = 'pointer';
+        // Restaurer le contenu du bouton
+        const icons = {
+          zap: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+        };
+        launchBtn.innerHTML = `<span class="launch-icon">${icons.zap}</span><span class="launch-text">Lancer Minecraft</span><span class="launch-hint">Appuyez sur Ctrl+L</span>`;
+      }
+      this.isLaunching = false;
+    });
+
 /*
     // ✅ BOUTON RADIO - DÉLÉGATION D'ÉVÉNEMENTS (fonctionne sur toutes les pages)
     const existingRadioListener = this.listeners.get('radio-click');
@@ -3816,11 +3777,13 @@ renderMainLayout() {
         const s = String(this.settings.defaultServer).trim();
         if (s) targetServer = s;
       }
-      const activeLaunchLoader = this.getActiveLaunchLoader(this.selectedProfile?.version);
+      
+      // 🎮 Utiliser le loader du profil sélectionné (qui a été mis à jour dans les mods)
+      const profileLoader = String(this.selectedProfile?.loader || 'vanilla').toLowerCase();
       const launchProfile = {
         ...this.selectedProfile,
-        loader: activeLaunchLoader,
-        forceVanillaLaunch: activeLaunchLoader === 'vanilla'
+        loader: profileLoader,
+        forceVanillaLaunch: profileLoader === 'vanilla'
       };
       const result = await ipcRenderer.invoke('launch-minecraft', launchProfile, targetServer);
       
@@ -3847,17 +3810,8 @@ renderMainLayout() {
         type: 'success'
       });
 
-      // Garder le bouton grisé pendant 5 secondes pour éviter de relancer trop vite
-      setTimeout(() => {
-        const currentLaunchBtn = document.getElementById('launch-btn');
-        if (currentLaunchBtn) {
-          currentLaunchBtn.disabled = false;
-          currentLaunchBtn.innerHTML = originalText;
-          currentLaunchBtn.style.opacity = '1';
-          currentLaunchBtn.style.cursor = 'pointer';
-        }
-        this.isLaunching = false;
-      }, 5000);
+      // ✅ Le bouton restera grisé jusqu'à ce que le jeu ferme
+      // Le listener 'game-closed' restaurera le bouton quand le jeu ferme
 
     } catch (error) {
       if (launchBtn) {

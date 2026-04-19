@@ -5,17 +5,17 @@
 
 const LauncherVersion = {
   // Informations principales
-  name: 'VelkoraMC',
-  version: '4.1.4',
-  versionName: '4.1.4',
-  build: '20260416',
-  releaseDate: '2026-04-16',
+  name: 'Velkora Client',
+  version: '4.1.6',
+  versionName: '4.1.6',
+  build: '20260419',
+  releaseDate: '2026-04-19',
   channel: 'stable', // stable, beta, dev
   
   // Informations du développeur
   author: 'Pharos_Off',
-  website: 'https://github.com/pharos-off/VelkoraMC',
-  discordServer: 'https://discord.gg/VelkoraMC',
+  website: 'https://github.com/pharos-off/Velkora',
+  discordServer: 'https://discord.gg/Velkora',
   
   // Méthodes utilitaires
   getFullVersion() {

@@ -72,6 +72,8 @@ async function loadSettings() {
       if (fullscreenToggle) fullscreenToggle.checked = settings.fullscreen || false;
       const showLogsToggle = document.getElementById('show-logs-toggle');
       if (showLogsToggle) showLogsToggle.checked = settings.showLogsWindow !== undefined ? settings.showLogsWindow : true;
+      const closeOnLaunchToggle = document.getElementById('close-launcher-toggle');
+      if (closeOnLaunchToggle) closeOnLaunchToggle.checked = settings.closeLauncherOnLaunch !== undefined ? settings.closeLauncherOnLaunch : false;
       const javaPathInput = document.getElementById('java-path-input');
       if (javaPathInput) javaPathInput.value = settings.javaPath || '';
       const versionSelect = document.getElementById('settings-version-select');
@@ -1450,12 +1452,30 @@ function renderSettings() {
     });
   }
 
-  // ✅ RAM SLIDER
+  // ✅ RAM SLIDER - AUTO SAVE
   const ramSlider = document.getElementById('ram-slider');
   const ramValue = document.getElementById('ram-value');
+  let ramSaveTimeout;
   if (ramSlider) {
     ramSlider.addEventListener('input', (e) => {
-      ramValue.textContent = `${e.target.value} GB`;
+      const ramGB = parseInt(e.target.value);
+      ramValue.textContent = `${ramGB} GB`;
+      
+      // Auto-save with delay
+      clearTimeout(ramSaveTimeout);
+      ramSaveTimeout = setTimeout(async () => {
+        try {
+          const settings = await ipcRenderer.invoke('get-settings');
+          settings.ramAllocation = ramGB;
+          await ipcRenderer.invoke('save-settings', settings);
+          console.log(`✅ RAM allocation sauvegardée: ${ramGB}GB`);
+          ramValue.style.color = '#10b981';
+          setTimeout(() => { ramValue.style.color = ''; }, 1000);
+        } catch (error) {
+          console.error('Erreur sauvegarde RAM:', error);
+          ramValue.style.color = '#ef4444';
+        }
+      }, 500);
     });
   }
 

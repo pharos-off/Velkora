@@ -1,6 +1,6 @@
 {
-  "name": "velkoramc",
-  "version": "4.1.4",
+  "name": "velkora-client",
+  "version": "4.1.6",
     "description": "Launcher Minecraft",
   "main": "src/main/index.js",
   "scripts": {
@@ -44,8 +44,8 @@
   ],
 
   "build": {
-    "appId": "com.velkoramc.app",
-    "productName": "VelkoraMC",
+    "appId": "com.velkora-client.app",
+    "productName": "velkora client",
     "directories": {
       "output": "dist"
     },

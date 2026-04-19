@@ -671,7 +671,7 @@ class MinecraftLauncher {
       console.log(`   Version: ${version}`);
       if (customVersion) console.log(`   Version custom: ${customVersion.id}`);
       console.log(`   Loader: ${requestedLoader}`);
-      console.log(`   RAM: ${ram}G`);
+      console.log(`   RAM: ${ram}G (max heap: ${ram}GB, min heap: ${Math.max(1, ram - 1)}GB)`);
       console.log(`   Utilisateur: ${authData.username}`);
       console.log(`   Directory: ${gameDirectory}`);
       console.log(`   Java: ${resolvedJava} (version ${javaMajor})`);

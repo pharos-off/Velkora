@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const MinecraftLauncher = require('./minecraft-launcher');
@@ -19,9 +19,9 @@ const { promisify } = require('util');
 const readFile = promisify(fs.readFile);
 
 
-const LAUNCHER_VERSION = '4.1.4';
-const LAUNCHER_BUILD = '20260416';
-const LAUNCHER_NAME = 'VelkoraMC';
+const LAUNCHER_VERSION = '4.1.6';
+const LAUNCHER_BUILD = '20260419';
+const LAUNCHER_NAME = 'Velkora Client';
 const __emojiMap = {
   '✅': '[OK]',
   '❌': '[ERR]',
@@ -73,9 +73,9 @@ function getGameDir() {
 }
 
 function getModsDir() {
-   const gameDir = getGameDir();
-   return path.join(gameDir, 'mods');
- }
+  const gameDir = getGameDir();
+  return path.join(gameDir, 'mods');
+}
 
 function getResourcePacksDir() {
   const gameDir = getGameDir();
@@ -169,7 +169,7 @@ console.log('✅ Discord IPC handlers registered');
 // ✅ APP USER MODEL ID (icône correcte lors de l’épinglage dans la barre des tâches)
 try {
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.velkoramc.app');
+    app.setAppUserModelId('com.velkora-client.app');
   }
 } catch (_) {}
 
@@ -224,8 +224,6 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => {    
-    try { if (logsWindow && !logsWindow.isDestroyed()) logsWindow.close(); } catch(_) {}
-    try { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); } catch(_) {}
     mainWindow = null;
   });
 }
@@ -245,8 +243,7 @@ function createSettingsWindow() {
     minHeight: 600,
     frame: false,
     backgroundColor: '#0f172a',
-    parent: mainWindow,
-    modal: false,
+    skipTaskbar: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -280,8 +277,7 @@ function createLogsWindow() {
     minHeight: 400,
     frame: false,
     backgroundColor: '#0a0e27',
-    parent: mainWindow,
-    modal: false,
+    skipTaskbar: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -727,6 +723,16 @@ function createTray() {
 
 // AJOUTER AVANT app.whenReady():
 
+// ✅ NETTOYER LE CACHE ELECTRON AU DÉMARRAGE POUR ÉVITER LES ERREURS D'ACCÈS
+app.on('ready', () => {
+  try {
+    session.defaultSession.clearCache().catch(() => {});
+    session.defaultSession.clearStorageData().catch(() => {});
+  } catch (e) {
+    console.log('Cache cleanup (non-critical):', e?.message);
+  }
+});
+
 ipcMain.on('settings-updated', (event, settings) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-updated', settings);
@@ -1080,6 +1086,16 @@ ipcMain.handle('login-microsoft', async () => {
           existing.accessToken = currentToken;
           store.set('authData', existing);
         }
+        
+        // 🎮 INITIALISER DISCORD EN ARRIÈRE-PLAN (NON-BLOQUANT)
+        const discordEnabled = store.get('discord.rpcEnabled', true);
+        if (discordEnabled && !discordRPC) {
+          // Ne pas attendre, lancer en arrière-plan
+          initializeDiscord().catch(discordError => {
+            console.warn('⚠️ Discord initialization failed:', discordError.message);
+          });
+        }
+        
         return { success: true, data: store.get('authData') };
       }
     }
@@ -1091,6 +1107,16 @@ ipcMain.handle('login-microsoft', async () => {
     
     if (result.success) {
       store.set('authData', result.data);
+      
+      // 🎮 INITIALISER DISCORD EN ARRIÈRE-PLAN (NON-BLOQUANT)
+      const discordEnabled = store.get('discord.rpcEnabled', true);
+      if (discordEnabled && !discordRPC) {
+        // Ne pas attendre, lancer en arrière-plan
+        initializeDiscord().catch(discordError => {
+          console.warn('⚠️ Discord initialization failed:', discordError.message);
+        });
+      }
+      
       return result;
     }
     
@@ -2037,6 +2063,10 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         },
         onClose: (code) => {
           try {
+            // Envoyer un signal au renderer pour indiquer que le jeu a fermé
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('game-closed', { code });
+            }
             if (settings.closeLauncherOnLaunch && mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
               mainWindow.focus();
@@ -2618,7 +2648,7 @@ async function checkUpdatesAndInstall() {
     const currentVersion = pkg.version;
     
     // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/VelkoraMC/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases', {
       headers: { 'User-Agent': 'VellkoraMC' }
     });
     
@@ -2709,7 +2739,7 @@ ipcMain.handle('check-updates', async () => {
     console.log(`[o] Checking for updates (Current: v${currentVersion})...`);
     
     // Récupérer les 5 dernières releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/VelkoraMC/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases', {
       headers: { 'User-Agent': '${LAUNCHER_NAME}' }
     });
     
@@ -2860,11 +2890,15 @@ function loadModsDB() {
     if (fs.existsSync(MODS_DB_FILE)) {
       const mods = JSON.parse(fs.readFileSync(MODS_DB_FILE, 'utf8'));
       return synchronizeModsDB(Array.isArray(mods) ? mods : []);
+    } else {
+      // Si le fichier DB n'existe pas, scanner le disque pour découvrir les mods
+      console.log('📦 Fichier DB n\'existe pas, scan du disque pour découvrir les mods...');
+      return synchronizeModsDB([]);
     }
   } catch (error) {
     console.error('Erreur lecture mods DB:', error);
   }
-  return [];
+  return synchronizeModsDB([]);
 }
 
 // Sauvegarder la base de données des mods
@@ -2959,12 +2993,22 @@ async function extractModImage(modPath) {
 
 function listModsFromDirectory() {
   const modsDir = getModsDir();
+  console.log(`📁 Dossier des mods scannée: ${modsDir}`);
+  
   if (!fs.existsSync(modsDir)) {
+    console.log(`📁 Dossier n'existe pas, création...`);
     fs.mkdirSync(modsDir, { recursive: true });
   }
 
-  return fs.readdirSync(modsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.(jar|jar\.disabled)$/i.test(entry.name))
+  const files = fs.readdirSync(modsDir, { withFileTypes: true });
+  const jarFiles = files.filter((entry) => entry.isFile() && /\.(jar|jar\.disabled)$/i.test(entry.name));
+  console.log(`📦 Fichiers JAR trouvés: ${jarFiles.length}`);
+  
+  if (jarFiles.length === 0) {
+    console.log(`⚠️ Aucun mod trouvé dans ${modsDir}`);
+  }
+
+  return jarFiles
     .map((entry, index) => {
       const actualName = entry.name;
       const fileName = normalizeStoredModFileName(actualName);
@@ -3523,7 +3567,7 @@ ipcMain.handle('delete-mod', async (event, modId) => {
 
 function getModrinthHeaders() {
   return {
-    'User-Agent': 'VelkoraMC/1.0 (contact@velkora.com)',
+    'User-Agent': 'Velkora Client/1.0 (contact@velkora.com)',
     'Accept': 'application/json'
   };
 }
