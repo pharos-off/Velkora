@@ -96,9 +96,9 @@ VelkoraMC est fourni sous la **Licence Velkora Client v1 (VCv1)**, une licence p
 
 ## 📊 Statistiques
 
-![GitHub Stars](https://img.shields.io/github/stars/pharos-off/Velkora?style=social)
-![GitHub Forks](https://img.shields.io/github/forks/pharos-off/Velkora?style=social)
-![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/Velkora?style=social)
+![GitHub Stars](https://img.shields.io/github/stars/pharos-off/Velkora?style=socia)
+![GitHub Forks](https://img.shields.io/github/forks/pharos-off/Velkora?style=socia)
+![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/Velkora?style=socia)
 
 ---
 
