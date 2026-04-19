@@ -1,4 +1,4 @@
-# VelkoraMC
+# Velkora Client
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
@@ -12,7 +12,7 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 
 ### Depuis les releases
 
-1. Téléchargez la dernière version depuis [GitHub Releases](https://github.com/pharos-off/minecraft-launcher/releases)
+1. Téléchargez la dernière version depuis [GitHub Releases](https://github.com/pharos-off/Velkora/releases)
 2. Exécutez l'installateur
 3. Lancez VelkoraMC !
 
@@ -52,18 +52,18 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 ## 🐛 Bugs et suggestions
 
 Avez-vous trouvé un bug ou avez une suggestion ?
-- 📝 Ouvrez une [Issue](https://github.com/pharos-off/VelkoraMC/issues)
-- 🤝 Créez une [Pull Request](https://github.com/pharos-off/VelkoraMC/pulls)
+- 📝 Ouvrez une [Issue](https://github.com/pharos-off/Velkora/issues)
+- 🤝 Créez une [Pull Request](https://github.com/pharos-off/Velkora/pulls)
 
 ---
 
 ## 📄 Licence
 
-### [VelkoraMC License v1 (VMv1)](./LICENSE)
+### [VelkoraMC License v1 (VCv1)](./LICENSE)
 
 **Copyright © 2026 Eloan**
 
-VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence personnalisée qui combine les droits de la licence MIT avec des conditions supplémentaires spécifiques à ce projet.
+VelkoraMC est fourni sous la **Licence Velkora Client v1 (VCv1)**, une licence personnalisée qui combine les droits de la licence MIT avec des conditions supplémentaires spécifiques à ce projet.
 
 ---
 
@@ -79,7 +79,7 @@ VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence person
 ## 📞 Contact
 
 - **GitHub** : [@Pharsos](https://github.com/pharos-off)
-- **Discord** : Rejoignez notre serveur communautaire
+- **Discord** : [Rejoignez notre serveur communautaire](https://discord.gg/gPnY3hHCA2)
 
 ---
 
@@ -96,9 +96,9 @@ VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence person
 
 ## 📊 Statistiques
 
-![GitHub Stars](https://img.shields.io/github/stars/pharos-off/minecraft-launcher?style=social)
-![GitHub Forks](https://img.shields.io/github/forks/pharos-off/minecraft-launcher?style=social)
-![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/minecraft-launcher?style=social)
+![GitHub Stars](https://img.shields.io/github/stars/pharos-off/Velkora?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/pharos-off/Velkora?style=social)
+![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/Velkora?style=social)
 
 ---
 
@@ -108,7 +108,7 @@ VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence person
 
 Rejoignez notre communauté et aidez-nous à améliorer VelkoraMC !
 
-[⭐ Star sur GitHub](https://github.com/pharos-off/VelkoraMC) • [🐛 Signaler un bug](https://github.com/pharos-off/VelkoraMC/issues) • [💬 Discuter](https://github.com/pharos-off/VelkoraMC/discussions)
+[⭐ Star sur GitHub](https://github.com/pharos-off/Velkora) • [🐛 Signaler un bug](https://github.com/pharos-off/Velkora/issues) • [💬 Discuter](https://github.com/pharos-off/Velkora/discussions)
 
 </div>
 
