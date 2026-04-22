@@ -2,7 +2,7 @@ const AdmZip = require('adm-zip');
 const path = require('path');
 const fs = require('fs');
 
-const shaderPath = path.join(process.env.APPDATA, '.minecraft', 'shaderpacks', 'ComplementaryReimagined_r5.7.1.zip');
+const shaderPath = path.join(process.env.APPDATA, '.minecraft', 'shaderpacks');
 
 console.log(`Testing file: ${shaderPath}`);
 console.log(`File exists: ${fs.existsSync(shaderPath)}`);

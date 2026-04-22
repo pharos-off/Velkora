@@ -12,7 +12,7 @@
     ${EndIf}
 
     ${NSD_CreateLabel} 0 0 100% 18u "Tâches supplémentaires"
-    ${NSD_CreateCheckbox} 0 24u 100% 12u "Lancer VelkoraMC au démarrage de Windows"
+    ${NSD_CreateCheckbox} 0 24u 100% 12u "Lancer Velkora Client au démarrage de Windows"
     Pop $StartOnBootCheckbox
     ${NSD_SetState} $StartOnBootCheckbox ${BST_UNCHECKED}
 
@@ -28,12 +28,12 @@
 
 !macro customInstall
   ${If} $StartOnBoot == ${BST_CHECKED}
-    WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "VelkoraMC" "$INSTDIR\\VelkoraMC.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Velkora Client" "$INSTDIR\velkora client.exe"
   ${Else}
-    DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "VelkoraMC"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Velkora Client"
   ${EndIf}
 !macroend
 
 !macro customUnInstall
-  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "VelkoraMC"
+  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "Velkora Client"
 !macroend
