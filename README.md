@@ -2,7 +2,7 @@
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
-![Version](https://img.shields.io/badge/version-4.1.4-blue.svg)
+![Version](https://img.shields.io/badge/version-4.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-CLv1-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-red.svg)
 
@@ -96,9 +96,9 @@ VelkoraMC est fourni sous la **Licence Velkora Client v1 (VCv1)**, une licence p
 
 ## 📊 Statistiques
 
-![GitHub Stars](https://img.shields.io/github/stars/pharos-off/Velkora?style=socia)
-![GitHub Forks](https://img.shields.io/github/forks/pharos-off/Velkora?style=socia)
-![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/Velkora?style=socia)
+![GitHub Stars](https://img.shields.io/github/stars/pharos-off/Velkora?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/pharos-off/Velkora?style=social)
+![GitHub Watchers](https://img.shields.io/github/watchers/pharos-off/Velkora?style=social)
 
 ---
 
