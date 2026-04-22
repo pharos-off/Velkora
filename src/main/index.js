@@ -19,8 +19,8 @@ const { promisify } = require('util');
 const readFile = promisify(fs.readFile);
 
 
-const LAUNCHER_VERSION = '4.1.6';
-const LAUNCHER_BUILD = '20260419';
+const LAUNCHER_VERSION = '4.2.0';
+const LAUNCHER_BUILD = '20260422';
 const LAUNCHER_NAME = 'Velkora Client';
 const __emojiMap = {
   '✅': '[OK]',
@@ -138,8 +138,11 @@ const childProcess = require('child_process');
 const { icons } = require('../renderer/lucide-icons');
 const originalSpawn = childProcess.spawn;
 
+// (No global child_process wrappers — keep defaults)
+
 const store = new Store();
 let mainWindow;
+let loadingWindow = null;
 let settingsWindow = null;
 let logsWindow = null;
 let discordRPC = null;
@@ -147,6 +150,7 @@ let launcher = null;
 let _discordCleaned = false;
 let minecraftRunning = false;
 let lastLaunchAttempt = 0;
+let lastGameClosedAt = 0;
 // Ignorer certaines erreurs bénignes lors de l’extinction (race Discord RPC)
 process.on('uncaughtException', (err) => {
   try {
@@ -155,7 +159,33 @@ process.on('uncaughtException', (err) => {
       return;
     }
   } catch (_) {}
-  throw err;
+
+  try {
+    console.error('Uncaught Exception:', err && (err.stack || err.message || err));
+  } catch (_) {}
+
+  try {
+    if (logsWindow && !logsWindow.isDestroyed() && logsWindow.webContents) {
+      const msg = String((err && (err.stack || err.message)) || err);
+      logsWindow.webContents.send('add-log', { type: 'error', message: `UncaughtException: ${msg}` });
+    }
+  } catch (_) {}
+
+  // Ne pas ré-émettre l'erreur pour éviter de quitter l'application.
+  // Laisser le processus continuer et reporter l'erreur dans la fenêtre de logs.
+});
+
+// Catch unhandled promise rejections and forward to logs instead of crashing
+process.on('unhandledRejection', (reason, promise) => {
+  try {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  } catch (_) {}
+  try {
+    if (logsWindow && !logsWindow.isDestroyed() && logsWindow.webContents) {
+      const msg = String(reason && (reason.stack || reason.message) || reason);
+      logsWindow.webContents.send('add-log', { type: 'error', message: `UnhandledRejection: ${msg}` });
+    }
+  } catch (_) {}
 });
 const LAUNCH_COOLDOWN = 1000;
 let modsLoadedCount = 0;
@@ -198,6 +228,22 @@ ipcMain.handle('set-startup-enabled', async (event, enabled) => {
   }
 });
 
+// ✅ IPC HANDLER POUR AFFICHER LA FENÊTRE PRINCIPALE ET FERMER LE LOADING SCREEN
+ipcMain.handle('show-main-window', async () => {
+  try {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    if (loadingWindow && !loadingWindow.isDestroyed()) {
+      loadingWindow.close();
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
 function createWindow() {
   const iconPath = path.join(__dirname, "../../assets/icon.ico");
   
@@ -206,6 +252,7 @@ function createWindow() {
     height: 800,
     frame: false,
     backgroundColor: '#0f172a',
+    show: true,
     ...(fs.existsSync(iconPath) && { icon: iconPath }),
     webPreferences: {
       nodeIntegration: true,
@@ -222,6 +269,27 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
   }
+
+  // Handle renderer crashes/unresponsive states and attempt graceful recovery
+  try {
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+      console.error('Renderer process gone:', details);
+      addLog('Renderer process gone: ' + (details && details.reason ? details.reason : JSON.stringify(details)), 'error');
+      try { if (!mainWindow.isDestroyed()) mainWindow.reload(); } catch (_) {}
+    });
+
+    mainWindow.webContents.on('crashed', (event) => {
+      console.error('Renderer crashed:', event);
+      addLog('Renderer crashed — reloading', 'error');
+      try { if (!mainWindow.isDestroyed()) mainWindow.reload(); } catch (_) {}
+    });
+
+    mainWindow.on('unresponsive', () => {
+      console.warn('Main window unresponsive — reloading');
+      addLog('Main window unresponsive — attempting reload', 'warning');
+      try { if (!mainWindow.isDestroyed()) mainWindow.reload(); } catch (_) {}
+    });
+  } catch (_) {}
 
   mainWindow.on('closed', () => {    
     mainWindow = null;
@@ -757,6 +825,23 @@ ipcMain.handle('get-assets-path', async () => {
   return musicPath;
 });
 */
+
+// ✅ GET LOGO PATH
+ipcMain.handle('get-logo-path', async () => {
+  let logoPath;
+  
+  if (app.isPackaged) {
+    logoPath = path.join(process.resourcesPath, 'assets', 'icon.ico');
+  } else {
+    logoPath = path.join(__dirname, '../../assets/icon.ico');
+  }
+  
+  // Convertir en URL file:// valide pour le renderer
+  const fileUrl = 'file:///' + logoPath.replace(/\\/g, '/');
+  console.log('✅ Logo URL sent to renderer:', fileUrl);
+  return fileUrl;
+});
+
 // Obtenir les infos du compte
 // ✅ NEWSLETTER SUBSCRIPTION
 ipcMain.handle('subscribe-newsletter', async (event, { email }) => {
@@ -965,7 +1050,12 @@ function addLog(message, type = 'info') {
 
 app.whenReady().then(async () => {
   initModsDirectory();
-  createWindow();
+
+  
+  // ✅ Retarder la création de la fenêtre principale pour laisser le loading screen s'afficher
+  setTimeout(() => {
+    createWindow();
+  }, 500);
   
   const discordEnabled = store.get('settings.discordRPC', false);
   if (discordEnabled) {
@@ -1910,6 +2000,11 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     }
     lastLaunchAttempt = now;
 
+    // ✅ VÉRIFICATION 2b: Empêcher un relancement immédiat juste après la fermeture
+    if (lastGameClosedAt && (now - lastGameClosedAt) < 10000) {
+      console.warn('⚠️ Lancement empêché: le jeu a été fermé récemment');
+      return { success: false, error: 'Le jeu vient d\'être fermé, attendez avant de relancer.' };
+    }
     // ✅ VÉRIFICATION 3: Minecraft déjà en cours
     if (minecraftRunning) {
       console.warn('⚠️ Minecraft déjà en cours');
@@ -2024,6 +2119,12 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         } else {
           effectiveJava = (effectiveJava || 'javaw').replace(/java\.exe$/i, 'javaw.exe');
         }
+        // Force use of javaw to avoid opening a console on Windows
+        try {
+          effectiveJava = String(effectiveJava).replace(/java\.exe$/i, 'javaw.exe');
+          if (/^java$/i.test(effectiveJava)) effectiveJava = 'javaw';
+        } catch (_) {}
+        console.log('🔧 Effective Java binary for launch:', effectiveJava);
       }
       
       const normalizedProfiles = syncProfilesWithInstalledVersions(store.get('profiles', []));
@@ -2067,6 +2168,8 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('game-closed', { code });
             }
+            // Marquer le moment de la fermeture pour éviter un relancement immédiat
+            try { lastGameClosedAt = Date.now(); setTimeout(() => { lastGameClosedAt = 0; }, 15000); } catch(_) {}
             if (settings.closeLauncherOnLaunch && mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
               mainWindow.focus();
@@ -2085,6 +2188,11 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
           
           // Log de progression
           console.log(`📊 ${progress.type}: ${progress.percent}%`);
+          try {
+            // Envoyer aussi dans la fenêtre de logs
+            const msg = progress.message || (`[${progress.type}] ${progress.percent}% (${progress.task || ''}/${progress.total || ''})`);
+            sendLog('info', msg);
+          } catch (_) {}
         }
       });
 
@@ -2648,7 +2756,7 @@ async function checkUpdatesAndInstall() {
     const currentVersion = pkg.version;
     
     // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases/', {
       headers: { 'User-Agent': 'VellkoraMC' }
     });
     
@@ -2712,6 +2820,7 @@ async function checkUpdatesAndInstall() {
     const { spawn } = require('child_process');
     spawn(updatePath, [], {
       detached: true,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     
@@ -2851,6 +2960,7 @@ ipcMain.handle('install-update', async () => {
     const { spawn } = require('child_process');
     spawn(updatePath, [], {
       detached: true,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     
@@ -4193,8 +4303,9 @@ ipcMain.handle('download-modrinth-shader', async (event, projectId, shaderName, 
 });
 
 // 🔄 Enable/Disable a mod
-ipcMain.handle('toggle-mod', async (event, { modId, enabled }) => {
+ipcMain.handle('toggle-mod', async (event, params) => {
   try {
+    const { modId, enabled } = params;
     const mods = loadModsDB();
     const mod = mods.find(m => m.id === modId);
 
@@ -4203,10 +4314,10 @@ ipcMain.handle('toggle-mod', async (event, { modId, enabled }) => {
     }
 
     mod.enabled = enabled;
-    
+
     // Renommer le fichier pour le désactiver/activer
     const currentPath = mod.path;
-    const newPath = enabled 
+    const newPath = enabled
       ? currentPath.replace('.disabled', '')
       : currentPath + '.disabled';
 
@@ -4217,11 +4328,10 @@ ipcMain.handle('toggle-mod', async (event, { modId, enabled }) => {
 
     saveModsDB(mods);
 
-    return { 
-      success: true, 
-      message: enabled ? 'Mod activé' : 'Mod désactivé' 
+    return {
+      success: true,
+      message: enabled ? 'Mod activé' : 'Mod désactivé'
     };
-
   } catch (error) {
     console.error('Erreur toggle-mod:', error);
     return { success: false, message: error.message };

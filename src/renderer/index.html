@@ -2597,6 +2597,67 @@
         rafProg = requestAnimationFrame(runProgress);
       }
       runProgress();
+      var isPaused = false;
+      // Simple performance monitor to adapt visual complexity
+      var perf = { frameCounter: 0, perfTimes: [], heavyFreq: 4, gridHeavyFreq: 3, lastAvg: 0 };
+      function recordFrameTime(ms) {
+        try {
+          perf.perfTimes.push(ms);
+          if (perf.perfTimes.length > 60) perf.perfTimes.shift();
+          var sum = 0;
+          for (var i=0;i<perf.perfTimes.length;i++) sum += perf.perfTimes[i];
+          var avg = sum / perf.perfTimes.length;
+          perf.lastAvg = avg;
+          if (avg > 22) {
+            perf.heavyFreq = Math.min(12, perf.heavyFreq + 1);
+            perf.gridHeavyFreq = Math.min(8, perf.gridHeavyFreq + 1);
+          } else if (avg < 12) {
+            perf.heavyFreq = Math.max(2, perf.heavyFreq - 1);
+            perf.gridHeavyFreq = Math.max(1, perf.gridHeavyFreq - 1);
+          }
+        } catch (_) {}
+        try { updateLowPowerState(); } catch(_) {}
+      }
+      // Track last tick and allow framerate capping
+      var lastTickTime = 0;
+      // Inject low-power CSS rules (disable heavy animations/effects)
+      (function(){ try {
+        var css = '.low-power * { animation: none !important; transition: none !important; } .low-power .loading-canvas, .low-power .grid-canvas, .low-power .neon-ring, .low-power .pulse-rings, .low-power .ring-orbit, .low-power .neon-core, .low-power .glyph-ring { display: none !important; }';
+        var s = document.createElement('style'); s.type = 'text/css'; s.appendChild(document.createTextNode(css)); document.head.appendChild(s);
+      } catch(_){} })();
+      function updateLowPowerState() {
+        try {
+          if (!perf || typeof perf.lastAvg !== 'number') return;
+          if (perf.lastAvg > 25) {
+            if (!document.body.classList.contains('low-power')) document.body.classList.add('low-power');
+          } else {
+            if (document.body.classList.contains('low-power')) document.body.classList.remove('low-power');
+          }
+        } catch(_) {}
+      }
+      function pauseAnimations() {
+        if (isPaused) return;
+        isPaused = true;
+        try { if (rafProg) { cancelAnimationFrame(rafProg); rafProg = null; } } catch(_) {}
+        try { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } } catch(_) {}
+        try { if (rafGrid) { cancelAnimationFrame(rafGrid); rafGrid = null; } } catch(_) {}
+        try { if (tipTimer) { clearInterval(tipTimer); tipTimer = null; } } catch(_) {}
+        try { if (statsTimer) { clearInterval(statsTimer); statsTimer = null; } } catch(_) {}
+      }
+      function resumeAnimations() {
+        if (!isPaused) return;
+        isPaused = false;
+        if (!rafProg) runProgress();
+        if (!rafId && canvas) rafId = requestAnimationFrame(tick);
+        if (!rafGrid && gcan) rafGrid = requestAnimationFrame(gridTick);
+        if (!tipTimer) tipTimer = setInterval(cycleSteps, 1000);
+        if (!statsTimer) statsTimer = setInterval(updateStats, 2000);
+      }
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) pauseAnimations(); else resumeAnimations();
+      });
+      window.addEventListener('blur', pauseAnimations);
+      window.addEventListener('focus', resumeAnimations);
       function cycleSteps(){
         if (msg) msg.textContent = steps[stepIndex % steps.length];
         if (sub) sub.textContent = substeps[stepIndex % substeps.length];
@@ -2632,7 +2693,7 @@
         if (!canvas) return;
         w = canvas.width = window.innerWidth;
         h = canvas.height = window.innerHeight;
-        var count = Math.min(700, Math.max(220, Math.floor(w * h / (fxLevel===2?5200:7400))));
+        var count = Math.min(350, Math.max(120, Math.floor(w * h / (fxLevel===2?5200:7400))));
         stars = [];
         var palette = ['#22d3ee','#60a5fa','#a78bfa','#14b8a6','#8b5cf6','#38bdf8'];
         for (var i=0;i<count;i++) stars.push({
@@ -2653,6 +2714,13 @@
       }
       function gridTick(){
         if (!gctx) { rafGrid = requestAnimationFrame(gridTick); return; }
+        // Skip expensive grid updates when performance manager requests it
+        try {
+          if (perf && (perf.frameCounter % perf.gridHeavyFreq !== 0)) {
+            rafGrid = requestAnimationFrame(gridTick);
+            return;
+          }
+        } catch(_) {}
         gTime += 0.016;
         gx += (gtx - gx) * 0.12;
         gy += (gty - gy) * 0.12;
@@ -2721,31 +2789,56 @@
       }
       if (gcan) {
         gx = window.innerWidth/2; gy = window.innerHeight/2; gtx = gx; gty = gy;
-        window.addEventListener('mousemove', function(e){ gtx = e.clientX; gty = e.clientY; });
+        // Throttle mouse updates to reduce main-thread churn
+        var _lastMouseTs = 0;
+        window.addEventListener('mousemove', function(e){
+          var now = Date.now();
+          if (now - _lastMouseTs > 80) {
+            gtx = e.clientX; gty = e.clientY; _lastMouseTs = now;
+          }
+        });
         window.addEventListener('resize', function(){ if (gcan){ gw = gcan.width = window.innerWidth; gh = gcan.height = window.innerHeight; }});
         rafGrid = requestAnimationFrame(gridTick);
       }
       function spawnBurst(cx, cy){
-        var n = fxLevel===2 ? 32 : 20;
+        var n = fxLevel===2 ? 16 : 10;
         for (var i=0;i<n;i++){
           var ang = Math.random()*Math.PI*2;
           var sp = 1+Math.random()*2.2;
           sparks.push({x:cx,y:cy,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,life:40+Math.random()*20,c:'#'+((Math.random()*0xffffff)|0).toString(16).padStart(6,'0')});
         }
+        // Cap sparks to avoid unbounded growth
+        if (sparks.length > 120) sparks.splice(0, sparks.length - 120);
       }
       function spawnComet(){
         var side = Math.random()<0.5?'left':'right';
         var y0 = Math.random()*h*0.8+0.1*h;
         var vx = side==='left' ? (1.2+Math.random()*1.4) : (-1.2-Math.random()*1.4);
         var x0 = side==='left'? -20 : w+20;
-        comets.push({x:x0,y:y0,vx:vx,vy:(Math.random()-0.5)*0.4,life:160,color:'#60a5fa'});
+        comets.push({x:x0,y:y0,vx:vx,vy:(Math.random()-0.5)*0.4,life:80,color:'#60a5fa'});
+        if (comets.length > 6) comets.shift();
       }
       function addLog(t){
-        if (!logsEl) return;
-        var li = document.createElement('li');
-        li.textContent = t.replace(/\.\.\.$/,'…');
-        logsEl.insertBefore(li, logsEl.firstChild);
-        while (logsEl.children.length > 4) logsEl.removeChild(logsEl.lastChild);
+        // Batch DOM updates to reduce main-thread churn
+        try {
+          if (!logsEl) return;
+          window._velkoraLogQueue = window._velkoraLogQueue || [];
+          window._velkoraLogQueue.push(String(t));
+          if (!window._velkoraLogFlushTimer) {
+            window._velkoraLogFlushTimer = setTimeout(function(){
+              try {
+                while (window._velkoraLogQueue && window._velkoraLogQueue.length) {
+                  var entry = window._velkoraLogQueue.shift();
+                  var li = document.createElement('li');
+                  li.textContent = entry.replace(/\.\.\.$/,'…');
+                  logsEl.insertBefore(li, logsEl.firstChild);
+                  while (logsEl.children.length > 8) logsEl.removeChild(logsEl.lastChild);
+                }
+              } catch(_){}
+              window._velkoraLogFlushTimer = null;
+            }, 300);
+          }
+        } catch (_) {}
       }
       function buildGlyphs(){
         if (!glyph) return;
@@ -2764,6 +2857,22 @@
         }
       }
       function tick(){
+        var now = performance.now();
+        var targetMs = 16;
+        try {
+          if (perf && typeof perf.lastAvg === 'number') {
+            if (perf.lastAvg > 30) targetMs = 41; // ~24fps
+            else if (perf.lastAvg > 18) targetMs = 33; // ~30fps
+            else targetMs = 16; // 60fps
+          }
+        } catch(_) {}
+        if (lastTickTime && (now - lastTickTime) < targetMs) {
+          perf.frameCounter++;
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+        lastTickTime = now;
+        var t0 = now;
         if (!ctx) { rafId = requestAnimationFrame(tick); return; }
         ctx.clearRect(0,0,w,h);
         for (var i=0;i<stars.length;i++){
@@ -2780,7 +2889,7 @@
           ctx.arc(st.x, st.y, st.s, 0, Math.PI*2);
           ctx.fillStyle = st.c;
           ctx.shadowColor = st.c;
-          ctx.shadowBlur = 16;
+          ctx.shadowBlur = 6;
           ctx.fill();
         }
         ctx.shadowBlur = 0;
@@ -2790,26 +2899,31 @@
         var neighbors = fxLevel===2 ? 5 : 3;
         var maxD2 = (fxLevel===2 ? 85 : 70);
         maxD2 = maxD2*maxD2;
-        for (var i2=0;i2<stars.length;i2+=step){
-          var a = stars[i2];
-          var countN = 0;
-          for (var j=i2+1;j<Math.min(i2+18, stars.length);j++){
-            var b = stars[j];
-            var dx = a.x - b.x;
-            var dy = a.y - b.y;
-            var d2 = dx*dx + dy*dy;
-            if (d2 < maxD2) {
-              var op = 0.12 * (1 - d2/maxD2);
-              ctx.strokeStyle = 'rgba(129,140,248,'+op.toFixed(3)+')';
-              ctx.beginPath();
-              ctx.moveTo(a.x, a.y);
-              ctx.lineTo(b.x, b.y);
-              ctx.stroke();
-              countN++;
-              if (countN >= neighbors) break;
+        // Perform expensive neighbor linking less often when needed
+        try {
+          if (!perf || (perf.frameCounter % perf.heavyFreq === 0)) {
+            for (var i2=0;i2<stars.length;i2+=step){
+              var a = stars[i2];
+              var countN = 0;
+              for (var j=i2+1;j<Math.min(i2+18, stars.length);j++){
+                var b = stars[j];
+                var dx = a.x - b.x;
+                var dy = a.y - b.y;
+                var d2 = dx*dx + dy*dy;
+                if (d2 < maxD2) {
+                  var op = 0.12 * (1 - d2/maxD2);
+                  ctx.strokeStyle = 'rgba(129,140,248,'+op.toFixed(3)+')';
+                  ctx.beginPath();
+                  ctx.moveTo(a.x, a.y);
+                  ctx.lineTo(b.x, b.y);
+                  ctx.stroke();
+                  countN++;
+                  if (countN >= neighbors) break;
+                }
+              }
             }
           }
-        }
+        } catch(_) {}
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 0.9;
         for (var i=0;i<sparks.length;i++){
@@ -2825,7 +2939,7 @@
           ctx.fill();
         }
         sparks = sparks.filter(function(s){return s.life>0 && s.x>-50 && s.x<w+50 && s.y>-50 && s.y<h+50;});
-        if (Math.random() < 0.01) spawnComet();
+        if (Math.random() < (0.01 * (4 / (perf ? perf.heavyFreq : 4)))) spawnComet();
         ctx.globalAlpha = 1;
         for (var i=0;i<comets.length;i++){
           var cm = comets[i];
@@ -2836,13 +2950,16 @@
           ctx.arc(cm.x, cm.y, 2.2, 0, Math.PI*2);
           ctx.fillStyle = cm.color;
           ctx.shadowColor = cm.color;
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 6;
           ctx.fill();
         }
         ctx.shadowBlur = 0;
         comets = comets.filter(function(c){return c.life>0 && c.x>-80 && c.x<w+80;});
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
+        var dt = performance.now() - t0;
+        try { recordFrameTime(dt); } catch(_) {}
+        perf.frameCounter++;
         rafId = requestAnimationFrame(tick);
       }
       if (canvas) {
@@ -2858,7 +2975,7 @@
         if (statNET) statNET.textContent = 'NET ' + (10 + Math.floor(Math.random()*50)) + ' ms';
       }
       updateStats();
-      statsTimer = setInterval(updateStats, 900);
+      statsTimer = setInterval(updateStats, 2000);
       function hideLoading() {
         if (!loading || isHiding) return;
         var elapsed = Date.now() - startTs;

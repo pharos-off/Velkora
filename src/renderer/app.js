@@ -459,14 +459,13 @@ class CraftLauncherApp {
       const mainHtml = this.renderMainLayout();
       appContainer.innerHTML = mainHtml;
       
-      // ✅ CHARGER LE LOGO DYNAMIQUEMENT
-      setTimeout(() => {
+      // ✅ CHARGER LE LOGO DYNAMIQUEMENT (FONCTIONNE EN PRODUCTION ET DÉVELOPPEMENT)
+      setTimeout(async () => {
         const logoImg = document.getElementById('titlebar-logo');
         if (logoImg) {
           try {
-            const path = require('path');
-            const iconPath = path.join(__dirname, '../../assets/icon.ico');
-            logoImg.src = `file://${iconPath}`;
+            const logoUrl = await ipcRenderer.invoke('get-logo-path');
+            logoImg.src = logoUrl;
           } catch (e) {
             console.warn('Impossible de charger le logo:', e.message);
           }
@@ -2083,92 +2082,226 @@ renderMainLayout() {
     `;
   }
 
-  // ✅ PAGE VERSIONS MINECRAFT
+  // ✅ PAGE VERSIONS
   renderVersionsView() {
-    // Liste des versions Minecraft populaires
-    const versions = [
-      { version: '26.1.2', release: '2026', type: 'stable' },
-      { version: '26.1.1', release: '2026', type: 'unsupported' },
-      { version: '1.21.11', release: '2025', type: 'unsupported' },
-      { version: '1.21.10', release: '2025', type: 'unsupported' },
-      { version: '1.21.9', release: '2025', type: 'unsupported' },
-      { version: '1.21.8', release: '2025', type: 'unsupported' },
-      { version: '1.21.7', release: '2025', type: 'unsupported' },
-      { version: '1.21.6', release: '2025', type: 'unsupported' },
-      { version: '1.21.5', release: '2025', type: 'unsupported' },
-      { version: '1.21.4', release: '2024', type: 'unsupported' },
-      { version: '1.21.3', release: '2024', type: 'unsupported' },
-      { version: '1.21.2', release: '2024', type: 'unsupported' },
-      { version: '1.21.1', release: '2024', type: 'unsupported' },
-      { version: '1.21', release: '2024', type: 'unsupported' },
-      { version: '1.20.4', release: '2023', type: 'unsupported' },
-      { version: '1.20.2', release: '2023', type: 'unsupported' },
-      { version: '1.20.1', release: '2023', type: 'unsupported' },
-      { version: '1.20', release: '2023', type: 'unsupported' },
-      { version: '1.19.4', release: '2023', type: 'unsupported' },
-      { version: '1.19.2', release: '2022', type: 'unsupported' },
-      { version: '1.19', release: '2022', type: 'unsupported' },
-      { version: '1.18.2', release: '2022', type: 'unsupported' },
-      { version: '1.16.5', release: '2021', type: 'unsupported' },
-      { version: '1.12.2', release: '2017', type: 'unsupported' },
-      { version: '1.8.9', release: '2015', type: 'unsupported' },
-    ];
-
-    return `
-      <div class="view-container" style="position: relative;">
-        <h1 class="view-title">Versions Minecraft</h1>
-        <p style="color: #64748b; margin-bottom: 30px;">Cliquez sur une version pour télécharger le serveur</p>
-
-        <div class="versions-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
-          ${versions.map(v => `
-            <div class="version-card" style="
-              background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-              border: 1px solid rgba(100, 116, 139, 0.2);
-              border-radius: 12px;
-              padding: 24px;
-              cursor: pointer;
-              transition: all 0.3s ease;
-            ">
-              <div style="display: flex; align-items: start; justify-content: space-between; margin-bottom: 16px;">
-                <div>
-                  <h3 style="font-size: 24px; font-weight: 700; color: #e2e8f0; margin: 0 0 8px 0;">Minecraft ${v.version}</h3>
-                  <p style="color: #94a3b8; margin: 0; font-size: 14px;">Sortie: ${v.release}</p>
-                </div>
-                <div style="
-                  padding: 6px 12px;
-                  border-radius: 8px;
-                  font-weight: 600;
-                  font-size: 12px;
-                  white-space: nowrap; /* ⚡ Empêche le retour à la ligne */
-                  color: ${v.type === 'stable' ? '#22c55e' : '#ef4444'};
-                  background: ${v.type === 'stable' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'};
-                ">
-                  ${v.type === 'stable' ? '✓ Supported' : '✗ Unsupported'}
-                </div>
-              </div>
-              
-              <div style="display: flex; gap: 12px; margin-top: 16px;">
-                <button class="btn-primary" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;" data-download-version="${v.version}">
-                  📥 Télécharger JAR
-                </button>
-              </div>
-              
-              <p style="color: #64748b; font-size: 12px; margin-top: 12px; margin-bottom: 0;">Cliquez pour ouvrir PaperMC et télécharger le serveur</p>
-            </div>
-          `).join('')}
+    const html = `
+      <div class="view-container">
+        <div style="margin-bottom: 40px;">
+          <h1 class="view-title">Versions</h1>
+          <p style="color: #94a3b8; margin-top: 12px; font-size: 15px;">
+            Informations sur le launcher et les mises à jour disponibles
+          </p>
         </div>
 
-        <div style="margin-top: 40px; padding: 24px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
-          <h3 style="margin-top: 0; color: #6366f1;">📝 Informations</h3>
-          <ul style="color: #cbd5e1; margin: 0; padding-left: 20px;">
-            <li>Les versions affichées sont les versions officielles Minecraft</li>
-            <li>Cliquez sur "Télécharger JAR" pour accéder à PaperMC (serveur optimisé)</li>
-            <li>PaperMC offre des performances meilleures que le serveur vanilla</li>
-            <li>Chaque version est directement téléchargeable via le lien</li>
-          </ul>
+        <!-- Carte version actuelle -->
+        <div style="
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
+          border: 1px solid rgba(99, 102, 241, 0.3);
+          border-radius: 12px;
+          padding: 24px;
+          margin-bottom: 24px;
+        ">
+          <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div>
+              <p style="color: #94a3b8; margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Version Actuelle</p>
+              <h2 style="color: #e2e8f0; margin: 0 0 4px 0; font-size: 28px; font-weight: 700;">
+                ${LauncherVersion.getVersionString()}
+              </h2>
+              <p style="color: #64748b; margin: 0; font-size: 13px;">Build ${LauncherVersion.getBuild()}</p>
+            </div>
+            <div id="update-status-badge" style="
+              padding: 12px 20px;
+              background: rgba(34, 197, 94, 0.2);
+              border: 1px solid rgba(34, 197, 94, 0.4);
+              border-radius: 8px;
+              color: #4ade80;
+              font-weight: 600;
+              font-size: 13px;
+            ">
+              ✓ À jour
+            </div>
+          </div>
+        </div>
+
+        <!-- Grille d'informations -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 30px;">
+          <!-- Carte 1: Mises à jour -->
+          <div style="
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s;
+          ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <span style="font-size: 24px;">${icons.download}</span>
+              <h3 style="margin: 0; color: #e2e8f0; font-size: 16px; font-weight: 600;">Mises à jour</h3>
+            </div>
+            <p style="color: #94a3b8; margin: 0 0 16px 0; font-size: 14px;">Vérifier les dernières mises à jour disponibles</p>
+            <button id="btn-check-updates" class="btn-primary" style="width: 100%; font-size: 13px; padding: 10px;">
+              Vérifier maintenant
+            </button>
+          </div>
+
+          <!-- Carte 2: Historique -->
+          <div style="
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s;
+          ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <span style="font-size: 24px;">${icons.calendar}</span>
+              <h3 style="margin: 0; color: #e2e8f0; font-size: 16px; font-weight: 600;">Historique</h3>
+            </div>
+            <p style="color: #94a3b8; margin: 0 0 16px 0; font-size: 14px;">Consulter l'historique des mises à jour</p>
+            <button id="btn-view-history" class="btn-primary" style="width: 100%; font-size: 13px; padding: 10px;">
+              Voir l'historique
+            </button>
+          </div>
+
+          <!-- Carte 3: Changelog -->
+          <div style="
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s;
+          ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <span style="font-size: 24px;">${icons.newspaper}</span>
+              <h3 style="margin: 0; color: #e2e8f0; font-size: 16px; font-weight: 600;">Changelog</h3>
+            </div>
+            <p style="color: #94a3b8; margin: 0 0 16px 0; font-size: 14px;">Lire les derniers changements et améliorations</p>
+            <button id="btn-read-changelog" class="btn-primary" style="width: 100%; font-size: 13px; padding: 10px;">
+              Lire le changelog
+            </button>
+          </div>
+        </div>
+
+        <!-- Section informations -->
+        <div style="
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%);
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          border-radius: 12px;
+          padding: 24px;
+        ">
+          <h3 style="margin: 0 0 16px 0; color: #6366f1; display: flex; align-items: center; gap: 8px; font-size: 16px;">
+            ℹ️ Informations sur le launcher
+          </h3>
+          
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <div>
+              <p style="color: #cbd5e1; margin: 0 0 6px 0; font-weight: 600; font-size: 13px;">Nom du launcher</p>
+              <p style="color: #94a3b8; margin: 0; font-size: 14px;">${LauncherVersion.getName()}</p>
+            </div>
+            <div>
+              <p style="color: #cbd5e1; margin: 0 0 6px 0; font-weight: 600; font-size: 13px;">Numéro de build</p>
+              <p style="color: #94a3b8; margin: 0; font-size: 14px;">${LauncherVersion.getBuild()}</p>
+            </div>
+            <div>
+              <p style="color: #cbd5e1; margin: 0 0 6px 0; font-weight: 600; font-size: 13px;">Mises à jour automatiques</p>
+              <p style="color: #94a3b8; margin: 0; font-size: 14px;">✓ Activées</p>
+            </div>
+            <div>
+              <p style="color: #cbd5e1; margin: 0 0 6px 0; font-weight: 600; font-size: 13px;">État</p>
+              <p style="color: #4ade80; margin: 0; font-size: 14px;">🟢 Opérationnel</p>
+            </div>
+          </div>
         </div>
       </div>
     `;
+
+    // Attacher les listeners après rendu
+    setTimeout(() => {
+      const checkBtn = document.getElementById('btn-check-updates');
+      const historyBtn = document.getElementById('btn-view-history');
+      const changelogBtn = document.getElementById('btn-read-changelog');
+
+      // Auto-check updates on render and update the status badge
+      (async () => {
+        try {
+          const badge = document.getElementById('update-status-badge');
+          if (!badge) return;
+          badge.textContent = 'Vérification...';
+          const result = await ipcRenderer.invoke('check-updates').catch(() => null);
+          if (result && result.hasUpdate) {
+            badge.style.background = 'rgba(249,115,22,0.18)';
+            badge.style.borderColor = 'rgba(249,115,22,0.35)';
+            badge.style.color = '#f97316';
+            badge.textContent = `Mise à jour: v${result.latestVersion}`;
+          } else if (result && !result.hasUpdate) {
+            badge.style.background = 'rgba(34,197,94,0.2)';
+            badge.style.borderColor = 'rgba(34,197,94,0.4)';
+            badge.style.color = '#4ade80';
+            badge.textContent = '✓ À jour';
+          } else {
+            badge.style.background = 'rgba(239,68,68,0.12)';
+            badge.style.borderColor = 'rgba(239,68,68,0.25)';
+            badge.style.color = '#ef4444';
+            badge.textContent = 'Erreur vérif.';
+          }
+        } catch (e) {
+          console.error('Auto check updates error:', e);
+        }
+      })();
+
+      if (checkBtn) {
+        checkBtn.addEventListener('click', async () => {
+          if (checkBtn.disabled) return;
+          const originalText = checkBtn.textContent;
+          checkBtn.disabled = true;
+          checkBtn.textContent = 'Vérification...';
+          try {
+            const result = await ipcRenderer.invoke('check-updates');
+            if (result && result.hasUpdate) {
+              this.ui.showToast({ title: 'Mise à jour disponible', message: `v${result.latestVersion} disponible`, type: 'success', duration: 8000 });
+              const confirmed = await this.ui.showConfirm({
+                title: 'Installer la mise à jour ?',
+                message: `Une mise à jour v${result.latestVersion} est disponible. Voulez-vous la télécharger et l'installer ?`,
+                confirmLabel: 'Installer',
+                cancelLabel: 'Plus tard',
+                type: 'info'
+              });
+              if (confirmed) {
+                const installRes = await ipcRenderer.invoke('install-update');
+                if (installRes && installRes.success) {
+                  this.ui.showToast({ title: 'Installation', message: installRes.message || 'Installation lancée', type: 'success' });
+                } else {
+                  this.ui.showToast({ title: 'Erreur', message: installRes?.error || installRes?.message || 'Impossible d\'installer', type: 'error' });
+                }
+              }
+            } else {
+              const msg = result?.error ? `Aucune mise à jour (${result.error})` : 'Vous êtes à jour';
+              this.ui.showToast({ title: 'Aucun update', message: msg, type: 'info' });
+            }
+          } catch (err) {
+            console.error('Erreur check-updates:', err);
+            this.ui.showToast({ title: 'Erreur', message: err?.message || String(err), type: 'error' });
+          } finally {
+            checkBtn.disabled = false;
+            checkBtn.textContent = originalText;
+          }
+        });
+      }
+
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora/releases');
+          this.ui.showToast({ title: 'Historique', message: 'Ouverture de la page des releases', type: 'info' });
+        });
+      }
+
+      if (changelogBtn) {
+        changelogBtn.addEventListener('click', () => {
+          ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora/blob/main/CHANGELOG.md');
+          this.ui.showToast({ title: 'Changelog', message: 'Ouverture du changelog', type: 'info' });
+        });
+      }
+    }, 100);
+
+    return html;
   }
 
   renderPartnersView() {

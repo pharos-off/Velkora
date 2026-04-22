@@ -205,114 +205,163 @@ class MinecraftLauncher {
         this.launcher.removeAllListeners();
 
         this.launcher.on('progress', (progress) => {
-          if (progress && progress.type) {
-            currentType = progress.type;
+          try {
+            if (progress && progress.type) {
+              currentType = progress.type;
 
-            const percent = progress.total > 0
-              ? Math.round((progress.task / progress.total) * 100)
-              : 0;
+              const percent = progress.total > 0
+                ? Math.round((progress.task / progress.total) * 100)
+                : 0;
 
-            // Suivre la progression par type
-            if (!progressByType[progress.type]) {
-              progressByType[progress.type] = { last: 0, count: 0 };
+              // Suivre la progression par type
+              if (!progressByType[progress.type]) {
+                progressByType[progress.type] = { last: 0, count: 0 };
+              }
+
+              progressByType[progress.type].count++;
+
+              // Log tous les 5% ou changement de type
+              if (percent % 5 === 0 && percent !== progressByType[progress.type].last) {
+                console.log(`   [${progress.type}] ${percent}% (${progress.task}/${progress.total})`);
+                progressByType[progress.type].last = percent;
+              }
+
+              if (progressCallback) {
+                try {
+                  progressCallback({
+                    type: progress.type,
+                    task: progress.task,
+                    total: progress.total,
+                    percent: percent
+                  });
+                } catch (cbErr) {
+                  console.warn('Progress callback error:', cbErr && (cbErr.stack || cbErr.message || cbErr));
+                }
+              }
             }
-
-            progressByType[progress.type].count++;
-
-            // Log tous les 5% ou changement de type
-            if (percent % 5 === 0 && percent !== progressByType[progress.type].last) {
-              console.log(`   [${progress.type}] ${percent}% (${progress.task}/${progress.total})`);
-              progressByType[progress.type].last = percent;
-            }
-
-            if (progressCallback) {
-              progressCallback({
-                type: progress.type,
-                task: progress.task,
-                total: progress.total,
-                percent: percent
-              });
-            }
+          } catch (e) {
+            console.error('Error in progress handler:', e && (e.stack || e.message || e));
           }
         });
 
         this.launcher.on('debug', (message) => {
-          if (message && typeof message === 'string') {
-            const msgLower = message.toLowerCase();
+          try {
+            if (message && typeof message === 'string') {
+              const msgLower = message.toLowerCase();
 
-            if (msgLower.includes('error') || msgLower.includes('failed')) {
-              console.error('[DEBUG ERROR]', message);
-              errorCount++;
+              if (msgLower.includes('error') || msgLower.includes('failed')) {
+                console.error('[DEBUG ERROR]', message);
+                errorCount++;
+                if (typeof onLog === 'function') onLog('error', message);
 
-              // Si trop d'erreurs sur les assets, on continue quand même
-              if (msgLower.includes('asset') && errorCount > 50) {
-                console.warn('⚠️  Beaucoup d\'erreurs sur les assets, mais on continue...');
-              }
-            } else if (msgLower.includes('downloading')) {
-              // Afficher les téléchargements importants
-              if (msgLower.includes('jar') || msgLower.includes('json')) {
-                console.log('[DOWNLOAD]', message.substring(0, 100));
+                // Si trop d'erreurs sur les assets, on continue quand même
+                if (msgLower.includes('asset') && errorCount > 50) {
+                  console.warn('⚠️  Beaucoup d\'erreurs sur les assets, mais on continue...');
+                  if (typeof onLog === 'function') onLog('warning', 'Beaucoup d\'erreurs sur les assets, mais on continue...');
+                }
+              } else if (msgLower.includes('downloading')) {
+                // Afficher les téléchargements importants
+                if (msgLower.includes('jar') || msgLower.includes('json')) {
+                  console.log('[DOWNLOAD]', message.substring(0, 100));
+                  if (typeof onLog === 'function') onLog('info', message.substring(0, 300));
+                }
+              } else {
+                // Generic debug
+                if (typeof onLog === 'function') onLog('debug', message);
               }
             }
+          } catch (e) {
+            console.error('Error in debug handler:', e && (e.stack || e.message || e));
           }
         });
 
         this.launcher.on('data', (data) => {
-          if (data && typeof data === 'string') {
-            // Logs importants seulement
-            if (data.includes('Downloaded') && (data.includes('.jar') || data.includes('.json'))) {
-              console.log('[DATA]', data.substring(0, 80));
+          try {
+            if (data && typeof data === 'string') {
+              // Logs importants seulement
+              if (data.includes('Downloaded') && (data.includes('.jar') || data.includes('.json'))) {
+                console.log('[DATA]', data.substring(0, 80));
+                if (typeof onLog === 'function') onLog('info', data.substring(0, 300));
+              } else if (typeof onLog === 'function') {
+                // forward general data logs at debug level
+                onLog('debug', data.substring(0, 300));
+              }
             }
+          } catch (e) {
+            console.error('Error in data handler:', e && (e.stack || e.message || e));
           }
         });
 
         let closeTimeout;
 
-        this.launcher.on('close', (code) => {
-          clearTimeout(closeTimeout);
+        this.launcher.on('close', async (code) => {
+          try {
+            clearTimeout(closeTimeout);
 
-          console.log(`\n[CLOSE] Process closed with code: ${code}`);
-          console.log(`📊 Statistiques:`);
-          Object.entries(progressByType).forEach(([type, stats]) => {
-            console.log(`   - ${type}: ${stats.count} fichiers`);
-          });
+            console.log(`\n[CLOSE] Process closed with code: ${code}`);
+            console.log(`📊 Statistiques:`);
+            Object.entries(progressByType).forEach(([type, stats]) => {
+              console.log(`   - ${type}: ${stats.count} fichiers`);
+            });
 
-          // Vérifier si les fichiers critiques existent
-          const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
-          const versionJarPath = path.join(gameDirectory, 'versions', version, `${version}.jar`);
-          const librariesPath = path.join(gameDirectory, 'libraries');
+            // Vérifier si les fichiers critiques existent
+            const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
+            const versionJarPath = path.join(gameDirectory, 'versions', version, `${version}.jar`);
+            const librariesPath = path.join(gameDirectory, 'libraries');
 
-          const criticalFilesExist = fs.existsSync(versionJsonPath) &&
-            fs.existsSync(versionJarPath) &&
-            fs.existsSync(librariesPath);
+            const criticalFilesExist = fs.existsSync(versionJsonPath) &&
+              fs.existsSync(versionJarPath) &&
+              fs.existsSync(librariesPath);
 
-          if (criticalFilesExist) {
-            const libCount = this.countFiles(librariesPath);
-            console.log(`✅ Download completed!`);
-            console.log(`   - Library files: ${libCount}`);
-            console.log(`   - Ignored errors: ${errorCount}`);
-            resolve({ success: true, downloadedFiles: libCount, errors: errorCount });
-          } else {
-            console.error('❌ Fichiers critiques manquants');
-            reject(new Error('Téléchargement incomplet - fichiers critiques manquants'));
+            if (criticalFilesExist) {
+              // compter les fichiers de manière asynchrone pour ne pas bloquer l'UI
+              let libCount = 0;
+              try {
+                libCount = await this.countFilesAsync(librariesPath);
+              } catch (e) {
+                console.warn('Error counting library files:', e && (e.stack || e.message || e));
+                libCount = 0;
+              }
+
+              console.log(`✅ Download completed!`);
+              console.log(`   - Library files: ${libCount}`);
+              console.log(`   - Ignored errors: ${errorCount}`);
+              resolve({ success: true, downloadedFiles: libCount, errors: errorCount });
+            } else {
+              console.error('❌ Fichiers critiques manquants');
+              reject(new Error('Téléchargement incomplet - fichiers critiques manquants'));
+            }
+          } catch (e) {
+            console.error('Error in close handler:', e && (e.stack || e.message || e));
+            try { reject(e); } catch (_) {}
           }
         });
 
         this.launcher.on('error', (err) => {
-          console.error('❌ Erreur launcher:', err.message);
+          try {
+            console.error('❌ Erreur launcher:', err && (err.stack || err.message || err));
+            if (typeof onLog === 'function') onLog('error', String(err && (err.stack || err.message || err)));
 
-          // Ne rejeter que si c'est une erreur critique
-          if (err.message.includes('ENOTFOUND') ||
-            err.message.includes('ECONNREFUSED') ||
-            err.message.includes('authentication')) {
-            reject(err);
-          } else {
-            errorCount++;
-            console.warn('⚠️  Erreur non-critique, on continue...');
+            // Ne rejeter que si c'est une erreur critique
+            const msg = String(err && (err.message || err) || '');
+            if (msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('authentication')) {
+              try { reject(err); } catch (_) {}
+            } else {
+              errorCount++;
+              console.warn('⚠️  Erreur non-critique, on continue...');
+            }
+          } catch (e) {
+            console.error('Error in error handler:', e && (e.stack || e.message || e));
           }
         });
 
-        this.launcher.launch(launchOptions);
+        try {
+          this.launcher.launch(launchOptions);
+        } catch (e) {
+          console.error('❌ Error launching internal launcher:', e && (e.stack || e.message || e));
+          if (typeof onLog === 'function') onLog('error', `Failed to start internal launcher: ${e && (e.stack || e.message || e)}`);
+          try { reject(e); } catch (_) {}
+        }
 
         // Timeout de sécurité (90 minutes)
         closeTimeout = setTimeout(() => {
@@ -352,6 +401,30 @@ class MinecraftLauncher {
       return 0;
     }
     return count;
+  }
+
+  // Asynchrone: compter les fichiers sans bloquer la boucle d'événements
+  async countFilesAsync(dir) {
+    let total = 0;
+    try {
+      if (!fs.existsSync(dir)) return 0;
+      const stack = [dir];
+      while (stack.length) {
+        const cur = stack.pop();
+        try {
+          const entries = await fs.promises.readdir(cur, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory()) stack.push(path.join(cur, entry.name));
+            else total++;
+          }
+        } catch (e) {
+          // ignore unreadable dirs
+        }
+      }
+    } catch (e) {
+      return 0;
+    }
+    return total;
   }
 
   // ✅ FIND JAVA PATH FOR SPECIFIC JAVA VERSION
@@ -402,21 +475,39 @@ class MinecraftLauncher {
 
     if (!isInstalled) {
       console.log(`\n📥 Version ${version} missing. Downloading...`);
+      if (typeof onLog === 'function') onLog('info', `📥 Version ${version} missing. Downloading...`);
       console.log(`⏱️  Cela peut prendre 10-30 minutes selon votre connexion...\n`);
+      if (typeof onLog === 'function') onLog('info', `⏱️  Cela peut prendre 10-30 minutes selon votre connexion...`);
 
       try {
         const result = await this.downloadVersion(version, gameDirectory, (progress) => {
-          // Progress callback pour l'UI si besoin
+          // Propager la progression vers le callback fourni à launch()
+          try {
+            if (typeof onProgress === 'function') {
+              onProgress({
+                type: progress.type,
+                task: progress.task,
+                total: progress.total,
+                percent: progress.percent,
+                message: `[${progress.type}] ${progress.percent}% (${progress.task}/${progress.total})`
+              });
+            }
+          } catch (e) {
+            // Ignorer les erreurs du callback
+          }
         });
 
         if (result.success) {
           console.log(`✅ Version ${version} downloaded successfully!`);
+          if (typeof onLog === 'function') onLog('success', `✅ Version ${version} downloaded successfully!`);
           if (result.errors > 0) {
             console.log(`⚠️ ${result.errors} minor errors ignored (missing assets)`);
+            if (typeof onLog === 'function') onLog('warning', `⚠️ ${result.errors} minor errors ignored (missing assets)`);
           }
         }
       } catch (error) {
         console.error(`❌ Download error: ${error.message}`);
+        if (typeof onLog === 'function') onLog('error', `❌ Download error: ${error.message}`);
         return {
           success: false,
           error: `Impossible de télécharger Minecraft ${version}: ${error.message}`
@@ -424,6 +515,7 @@ class MinecraftLauncher {
       }
     } else {
       console.log(`✅ Version ${version} already installed`);
+      if (typeof onLog === 'function') onLog('info', `✅ Version ${version} already installed`);
 
       // Vérification supplémentaire de l'intégrité des fichiers
       const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
@@ -431,8 +523,21 @@ class MinecraftLauncher {
 
       if (!fs.existsSync(versionJsonPath) || !fs.existsSync(versionJarPath)) {
         console.log(`⚠️ Fichiers manquants détectés, retéléchargement nécessaire...`);
+        if (typeof onLog === 'function') onLog('warning', `⚠️ Fichiers manquants détectés, retéléchargement nécessaire...`);
         try {
-          const result = await this.downloadVersion(version, gameDirectory, (progress) => {});
+          const result = await this.downloadVersion(version, gameDirectory, (progress) => {
+            try {
+              if (typeof onProgress === 'function') {
+                onProgress({
+                  type: progress.type,
+                  task: progress.task,
+                  total: progress.total,
+                  percent: progress.percent,
+                  message: `[${progress.type}] ${progress.percent}% (${progress.task}/${progress.total})`
+                });
+              }
+            } catch (e) {}
+          });
           if (!result.success) {
             return {
               success: false,
@@ -679,40 +784,92 @@ class MinecraftLauncher {
       console.log('');
 
       try {
+        // Temporarily patch child_process.spawn to force javaw and hide console on Windows
+        const child_process = require('child_process');
+        const origSpawn = child_process.spawn;
+        let _patchedSpawn = false;
+        try {
+          if (process.platform === 'win32' && typeof origSpawn === 'function') {
+            child_process.spawn = function(command, args, options) {
+              try {
+                let cmd = command;
+                if (typeof cmd === 'string') {
+                  const base = path.basename(cmd);
+                  if (/^java(\.exe)?$/i.test(base)) {
+                    cmd = cmd.replace(/java(\.exe)?$/i, 'javaw.exe');
+                  }
+                }
+                options = Object.assign({}, options || {}, { windowsHide: true });
+                return origSpawn.call(child_process, cmd, args, options);
+              } catch (e) {
+                return origSpawn.call(child_process, command, args, options);
+              }
+            };
+            _patchedSpawn = true;
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not patch child_process.spawn:', e && e.message);
+        }
+
         this.launcher.launch(launchOptions);
 
+        // restore spawn after launching to avoid side-effects
+        try {
+          if (_patchedSpawn) child_process.spawn = origSpawn;
+        } catch (e) {
+          // ignore
+        }
+
         this.launcher.on('debug', (e) => {
-          if (e && typeof e === 'string' && (e.includes('Error') || e.includes('error'))) {
-            console.log('[DEBUG]', e);
-            if (onLog) onLog('debug', e);
+          try {
+            if (e && typeof e === 'string' && (e.includes('Error') || e.includes('error'))) {
+              console.log('[DEBUG]', e);
+              if (onLog) onLog('debug', e);
+            } else if (e && typeof e === 'string') {
+              if (onLog) onLog('debug', e);
+            }
+          } catch (err) {
+            console.error('Error in launch debug handler:', err && (err.stack || err.message || err));
           }
         });
 
         this.launcher.on('data', (e) => {
-          if (e && typeof e === 'string') {
-            console.log('[GAME]', e.substring(0, 100));
-            if (onLog) onLog('info', e.substring(0, 300));
+          try {
+            if (e && typeof e === 'string') {
+              console.log('[GAME]', e.substring(0, 100));
+              if (onLog) onLog('info', e.substring(0, 300));
+            }
+          } catch (err) {
+            console.error('Error in launch data handler:', err && (err.stack || err.message || err));
           }
         });
 
         let launchResolved = false;
 
         this.launcher.on('close', (code) => {
-          console.log(`\n🎓 Minecraft closed (code: ${code})`);
-          if (onLog) onLog(code === 0 ? 'success' : 'error', `Minecraft closed (code: ${code})`);
-          try { if (typeof onClose === 'function') onClose(code); } catch (_) { }
-          if (!launchResolved) {
-            launchResolved = true;
-            resolve({ success: true, code: code });
+          try {
+            console.log(`\n🎓 Minecraft closed (code: ${code})`);
+            if (onLog) onLog(code === 0 ? 'success' : 'error', `Minecraft closed (code: ${code})`);
+            try { if (typeof onClose === 'function') onClose(code); } catch (_) { }
+            if (!launchResolved) {
+              launchResolved = true;
+              resolve({ success: true, code: code });
+            }
+          } catch (err) {
+            console.error('Error in launch close handler:', err && (err.stack || err.message || err));
           }
         });
 
         this.launcher.on('error', (err) => {
-          console.error('❌ Erreur Minecraft:', err);
-          if (onLog) onLog('error', String(err?.message || err));
-          if (!launchResolved) {
-            launchResolved = true;
-            reject(err);
+          try {
+            console.error('❌ Erreur Minecraft:', err && (err.stack || err.message || err));
+            if (onLog) onLog('error', String(err?.message || err));
+            if (!launchResolved) {
+              launchResolved = true;
+              reject(err);
+            }
+          } catch (e) {
+            console.error('Error in launch error handler:', e && (e.stack || e.message || e));
           }
         });
 
