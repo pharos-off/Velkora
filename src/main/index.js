@@ -1,12 +1,17 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
+const { spawn } = require("child_process");
 const MinecraftLauncher = require('./minecraft-launcher');
 const MicrosoftAuth = require('./microsoft-auth');
 const DiscordPresence = require('./discord-rpc');
 const setupDiscordHandlers = require('./discord-handler');
 const LauncherVersion = require('./launcher-version.js');
 const { setSettingsWindow, updateDiscordReference } = require('./discord-handler');
+const SecurityManager = require('./security-manager');
+const ElectronSecurity = require('./electron-security');
+const NetworkManager = require('./network-manager');
+const CacheManager = require('./cache-manager');
 let _msAuthInstance = null;
 
 const si = require('systeminformation');
@@ -18,9 +23,17 @@ const AdmZip = require('adm-zip');
 const { promisify } = require('util');
 const readFile = promisify(fs.readFile);
 
+// ✅ Initialiser les gestionnaires de sécurité et de performance
+const electronSecurity = new ElectronSecurity();
+const networkManager = new NetworkManager({
+  timeout: 30000,
+  retryAttempts: 3,
+  cache: { maxSize: 100, defaultTTL: 5 * 60 * 1000 }
+});
 
-const LAUNCHER_VERSION = '4.2.0';
-const LAUNCHER_BUILD = '20260422';
+
+const LAUNCHER_VERSION = '4.2.2';
+const LAUNCHER_BUILD = '20260504';
 const LAUNCHER_NAME = 'Velkora Client';
 const __emojiMap = {
   '✅': '[OK]',
@@ -45,6 +58,24 @@ const __emojiMap = {
   '🚀': '[LAUNCH]',
   '✓': '[OK]'
 };
+
+let apiProcess = null;
+
+function startApiServer() {
+  const serverPath = path.join(__dirname, "../../server.js");
+
+  apiProcess = spawn("node", [serverPath], {
+    shell: true,
+    stdio: "inherit"
+  });
+
+  apiProcess.on("error", (err) => {
+    console.error("[API] Erreur lancement:", err);
+  });
+
+  console.log("[API] Backend lancé");
+}
+
 function __sanitizeText(t) {
   if (typeof t !== 'string') return t;
   let out = t;
@@ -86,9 +117,18 @@ function getShadersDir() {
   const gameDir = getGameDir();
   return path.join(gameDir, 'shaderpacks');
 }
- 
- const MODS_DB_FILE = path.join(app.getPath('userData'), 'mods.json');
-app.setAsDefaultProtocolClient('minecraft');
+
+let MODS_DB_FILE = null;
+
+function getModsDbFile() {
+  if (!MODS_DB_FILE) {
+    MODS_DB_FILE = path.join(app.getPath('userData'), 'mods.json');
+  }
+  return MODS_DB_FILE;
+}
+
+// Initialization will be done in app.on('ready')
+// app.setAsDefaultProtocolClient('minecraft');
 
 // S'assurer que le dossier mods existe
 function initModsDirectory() {
@@ -124,6 +164,31 @@ function initShadersDirectory() {
     }
   } catch (error) {
     console.error('Error creating shaderpacks folder:', error);
+  }
+}
+
+// ✅ CLEANUP OLD SETUP FILES FROM TEMP DIRECTORY
+function cleanupOldInstallers() {
+  try {
+    const tempDir = os.tmpdir();
+    const files = fs.readdirSync(tempDir);
+    
+    const setupFiles = files.filter(f => f.startsWith('velkora') && f.endsWith('.exe'));
+    
+    setupFiles.forEach(file => {
+      try {
+        const filePath = path.join(tempDir, file);
+        fs.unlinkSync(filePath);
+        console.log(`🧹 Cleaned up old installer: ${file}`);
+      } catch (err) {
+        // Silently fail if file is locked or doesn't exist
+        if (err.code !== 'EBUSY' && err.code !== 'ENOENT') {
+          console.warn(`Could not delete ${file}:`, err.code);
+        }
+      }
+    });
+  } catch (error) {
+    console.warn('⚠️ Cleanup of old installers failed:', error.message);
   }
 }
 
@@ -191,10 +256,9 @@ const LAUNCH_COOLDOWN = 1000;
 let modsLoadedCount = 0;
 let currentLogs = [];
 
-// ✅ CONFIGURER LES HANDLERS IPC IMMÉDIATEMENT
-updateDiscordReference(discordRPC);
-setupDiscordHandlers(null, store, null);
-console.log('✅ Discord IPC handlers registered');
+// ✅ Discord handlers will be registered in app.on('ready')
+// updateDiscordReference(discordRPC);
+// setupDiscordHandlers(null, store, null);
 
 // ✅ APP USER MODEL ID (icône correcte lors de l’épinglage dans la barre des tâches)
 try {
@@ -794,6 +858,17 @@ function createTray() {
 // ✅ NETTOYER LE CACHE ELECTRON AU DÉMARRAGE POUR ÉVITER LES ERREURS D'ACCÈS
 app.on('ready', () => {
   try {
+    // Initialize protocol handler
+    app.setAsDefaultProtocolClient('minecraft');
+    
+    // Initialize Discord handlers
+    updateDiscordReference(discordRPC);
+    setupDiscordHandlers(null, store, null);
+    console.log('✅ Discord IPC handlers registered');
+    
+    // Clean up old installer files
+    cleanupOldInstallers();
+    
     session.defaultSession.clearCache().catch(() => {});
     session.defaultSession.clearStorageData().catch(() => {});
   } catch (e) {
@@ -958,6 +1033,10 @@ app.on('before-quit', async () => {
     }
   } catch (e) {
     // ignorer toute erreur de fermeture
+  }
+  if (apiProcess) {
+    apiProcess.kill();
+    console.log("[API] Backend arrêté");
   }
 });
 
@@ -2816,18 +2895,13 @@ async function checkUpdatesAndInstall() {
     console.log(`✓ ${fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
     console.log('🚀 Automatic installation in progress...\n');
     
-    // Launch the installer
-    const { spawn } = require('child_process');
-    spawn(updatePath, [], {
-      detached: true,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    // Launch the installer using shell.openPath (proper way on Windows)
+    await shell.openPath(updatePath);
     
-    // Quit the app
+    // Quit the app after a delay to ensure installer launches
     setTimeout(() => {
       app.quit();
-    }, 500);
+    }, 1000);
     
     return { hasUpdate: true, installed: true };
   } catch (error) {
@@ -2956,19 +3030,14 @@ ipcMain.handle('install-update', async () => {
     console.log(`✓ ${latestUpdateData.fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
     console.log('🚀 Launching the installer...');
     
-    // Run the installer in detached mode
-    const { spawn } = require('child_process');
-    spawn(updatePath, [], {
-      detached: true,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    // Launch the installer using shell.openPath (proper way on Windows)
+    await shell.openPath(updatePath);
     
-    // Close the app after a delay
+    // Close the app after a delay to ensure installer launches
     setTimeout(() => {
       console.log('🔄 Closing application...');
       app.quit();
-    }, 500);
+    }, 1000);
     
     return { success: true, message: `Installation of v${latestUpdateData.latestVersion} in progress...` };
   } catch (error) {
@@ -2997,8 +3066,9 @@ ipcMain.on('minimize-window', () => mainWindow.minimize());
 // Charger la base de données des mods
 function loadModsDB() {
   try {
-    if (fs.existsSync(MODS_DB_FILE)) {
-      const mods = JSON.parse(fs.readFileSync(MODS_DB_FILE, 'utf8'));
+    const modsDbFile = getModsDbFile();
+    if (fs.existsSync(modsDbFile)) {
+      const mods = JSON.parse(fs.readFileSync(modsDbFile, 'utf8'));
       return synchronizeModsDB(Array.isArray(mods) ? mods : []);
     } else {
       // Si le fichier DB n'existe pas, scanner le disque pour découvrir les mods
@@ -3014,7 +3084,8 @@ function loadModsDB() {
 // Sauvegarder la base de données des mods
 function saveModsDB(mods) {
   try {
-    fs.writeFileSync(MODS_DB_FILE, JSON.stringify(mods, null, 2));
+    const modsDbFile = getModsDbFile();
+    fs.writeFileSync(modsDbFile, JSON.stringify(mods, null, 2));
     return true;
   } catch (error) {
     console.error('Erreur sauvegarde mods DB:', error);

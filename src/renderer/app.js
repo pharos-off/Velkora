@@ -44,12 +44,17 @@ const icons = {
   leaf: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 22c7.333 0 11-3.667 11-11S18.333 0 11 0 0 3.667 0 11s3.667 11 11 11z"/></svg>`,
   heart: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
   download: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-  globe: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
   clipboard: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`,
   barChart: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
   search: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
   mods: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+  help: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
+  tool: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 0-8.94-8.94l-2.83 2.83a1 1 0 0 0 0 1.4l1.6 1.6"/><path d="M9.3 17.7a1 1 0 0 0 0-1.4L7.7 14.7a1 1 0 0 0-1.4 0l-3.77 3.77a6 6 0 0 0 8.94 8.94l2.83-2.83a1 1 0 0 0 0-1.4l-1.6-1.6"/></svg>`,
+  lock: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  palette: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>`,
+  pin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5z"/></svg>`,
 };
+
 
 class CraftLauncherApp {
   constructor() {
@@ -765,8 +770,6 @@ renderMainLayout() {
               </button>
             </div>
           </div>
-
-          <div class="sidebar-footer"></div>
         </div>
 
         <div class="main-content" id="main-content-view">
@@ -998,150 +1001,277 @@ renderMainLayout() {
   renderHelp() {
     return `
       <div class="view-container" style="padding: 40px;">
-        <div class="view-header" style="margin-bottom: 30px;">
-          <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;">${icons.newspaper} Aide & Support</h1>
-          <p style="color: #94a3b8; margin-top: 10px;">Documentation, communauté et support technique</p>
+        <!-- 📋 HEADER PRINCIPAL -->
+        <div class="view-header" style="margin-bottom: 40px;">
+          <h1 class="view-title" style="display: flex; align-items: center; gap: 12px; font-size: 32px; margin: 0 0 8px 0;"><span style="display: flex;">${icons.help}</span> Centre d'aide Velkora</h1>
+          <p style="color: #94a3b8; margin: 0; font-size: 16px;">Support technique, documentation et communauté</p>
         </div>
 
-        <!-- Onglets -->
-        <div style="display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid rgba(99, 102, 241, 0.2); padding-bottom: 10px;">
-          <button id="help-wiki-btn" class="help-tab-btn" style="background: rgba(99, 102, 241, 0.2); color: #e2e8f0; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px;">${icons.newspaper} Wiki</button>
-          <button id="help-discord-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px;">${icons.messageSquare} Discord</button>
-          <button id="help-bug-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px;">${icons.check} Signaler un bug</button>
-          <button id="help-pr-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px;">${icons.handshake} Pull Requests</button>
-        </div>
-
-        <!-- Contenu Wiki -->
-        <div id="help-wiki-content" class="help-tab-content" style="display: block;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; max-width: 1200px;">
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.globe} Démarrage rapide</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Apprenez à installer et configurer ${LauncherVersion.getName()} en quelques minutes.</p>
-            </div>
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.download} Guide des versions</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Installez et gérez facilement plusieurs versions de Minecraft.</p>
-            </div>
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.settings} Configuration</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Personnalisez les paramètres et optimisez vos performances.</p>
-            </div>
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.search} FAQ</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Réponses aux questions fréquemment posées.</p>
-            </div>
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.user} Sécurité</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Conseils pour sécuriser votre compte et vos données.</p>
-            </div>
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 25px; cursor: pointer; transition: all 0.3s;">
-              <h3 style="color: #e2e8f0; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">${icons.star} Personnalisation</h3>
-              <p style="color: #94a3b8; font-size: 14px;">Personnalisez l'apparence de votre lanceur.</p>
+        <!-- 🎯 CARTES D'ACTION RAPIDE -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 40px;">
+          <div class="help-quick-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 14px; padding: 24px; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: rgba(99, 102, 241, 0.1); border-radius: 50%; pointer-events: none;"></div>
+            <div style="position: relative; z-index: 1;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.newspaper}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Documentation</h3>
+              <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Guides complets et tutoriels</p>
             </div>
           </div>
 
-          <div style="margin-top: 40px; padding: 25px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
-            <p style="color: #cbd5e1; margin: 0;">Le wiki complet est disponible sur <strong style="color: #6366f1;">github.com</strong></p>
+          <div class="help-quick-card" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(168, 85, 247, 0.1) 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 14px; padding: 24px; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: rgba(139, 92, 246, 0.1); border-radius: 50%; pointer-events: none;"></div>
+            <div style="position: relative; z-index: 1;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.search}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Signaler un Bug</h3>
+              <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Aide-nous à améliorer</p>
+            </div>
+          </div>
+
+          <div class="help-quick-card" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.1) 100%); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 14px; padding: 24px; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: rgba(168, 85, 247, 0.1); border-radius: 50%; pointer-events: none;"></div>
+            <div style="position: relative; z-index: 1;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.messageSquare}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Communauté Discord</h3>
+              <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Rejoins nos discussions</p>
+            </div>
+          </div>
+
+          <div class="help-quick-card" style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(34, 197, 94, 0.1) 100%); border: 1px solid rgba(236, 72, 153, 0.3); border-radius: 14px; padding: 24px; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: rgba(236, 72, 153, 0.1); border-radius: 50%; pointer-events: none;"></div>
+            <div style="position: relative; z-index: 1;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.handshake}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Contribuer</h3>
+              <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Améliore le projet</p>
+            </div>
           </div>
         </div>
 
-        <!-- Contenu Discord -->
-        <div id="help-discord-content" class="help-tab-content" style="display: none;">
-          <div style="display: flex; justify-content: center; align-items: flex-start; min-height: 600px; padding: 20px;">
-            <iframe src="https://discord.com/widget?id=1383756097017614426&theme=dark" width="350" height="500" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
+        <!-- 📑 ONGLETS -->
+        <div style="display: flex; gap: 8px; margin-bottom: 30px; padding-bottom: 16px; border-bottom: 2px solid rgba(99, 102, 241, 0.15); overflow-x: auto;">
+          <button id="help-docs-btn" class="help-tab-btn" style="background: rgba(99, 102, 241, 0.25); color: #e2e8f0; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px; white-space: nowrap;">${icons.newspaper} Documentation</button>
+          <button id="help-faq-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px; white-space: nowrap;">${icons.help} FAQ</button>
+          <button id="help-bug-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px; white-space: nowrap;">${icons.search} Signaler un bug</button>
+          <button id="help-discord-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px; white-space: nowrap;">${icons.messageSquare} Discord</button>
+          <button id="help-pr-btn" class="help-tab-btn" style="background: transparent; color: #94a3b8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s; display: flex; align-items: center; gap: 6px; white-space: nowrap;">${icons.handshake} Contribuer</button>
+        </div>
+
+        <!-- 📖 DOCUMENTATION -->
+        <div id="help-docs-content" class="help-tab-content" style="display: block;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s; hover:transform translateY(-2px);">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.zap}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Démarrage Rapide</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Installation, configuration initiale et lancement du jeu.</p>
+            </div>
+            
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.harddrive}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Versions & Loaders</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Gère Vanilla, Fabric, Forge et Quilt facilement.</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.settings}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Configuration</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Optimise RAM, FPS et paramètres de jeu.</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.tool}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Modding</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Ajoute et gère tes mods facilement.</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.lock}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Sécurité</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Protège ton compte Microsoft et tes données.</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; cursor: pointer; transition: all 0.3s;">
+              <div style="font-size: 20px; margin-bottom: 12px; display: flex;">${icons.palette}</div>
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Personnalisation</h3>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0;">Personnalise l'apparence du lanceur.</p>
+            </div>
           </div>
 
-          <div style="margin-top: 40px; padding: 25px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px;">
-            <h4 style="color: #e2e8f0; margin-top: 0; display: flex; align-items: center; gap: 8px;">${icons.check} Règles de la communauté</h4>
-            <ul style="color: #cbd5e1; margin-bottom: 0;">
-              <li>Sois respectueux avec les autres membres</li>
-              <li>Pas de spam ou de contenu malveillant</li>
-              <li>Garde les discussions dans les bons canaux</li>
-              <li>Aide les nouveaux membres à s'intégrer</li>
-            </ul>
+          <div style="margin-top: 30px; padding: 24px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="font-size: 20px; display: flex;">${icons.clipboard}</div>
+              <div>
+                <h3 style="color: #e2e8f0; margin: 0 0 4px 0; font-size: 15px; font-weight: 700;">Wiki Complet</h3>
+                <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Tous nos tutoriels et guides sont disponibles sur GitHub</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Contenu Bug Report -->
+        <!-- ❓ FAQ -->
+        <div id="help-faq-content" class="help-tab-content" style="display: none;">
+          <div style="max-width: 900px;">
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #6366f1; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Comment installer ${LauncherVersion.getName()} ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Télécharge l'installateur depuis GitHub, exécute-le et suis les étapes. Aucune configuration supplémentaire nécessaire !</p>
+            </div>
+
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #a855f7; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Que signifie Fabric, Forge, etc. ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Ce sont des <strong>modloaders</strong> qui permettent d'installer des mods. Vanilla = sans mods. Fabric/Forge = avec mods. Choisis selon tes besoins !</p>
+            </div>
+
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Comment optimiser mes FPS ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Va dans Paramètres → Configuration pour ajuster la RAM allouée, la distance de rendu et les graphismes. Regarde aussi tes drivers GPU !</p>
+            </div>
+
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #06b6d4; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Mes mods ne chargent pas, pourquoi ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Vérifie que tu as installé le bon modloader et la bonne version. Les mods Fabric ne marchent pas sur Forge. Consulte la doc du mod pour plus d'infos.</p>
+            </div>
+
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #22c55e; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Est-ce gratuit ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Oui ! ${LauncherVersion.getName()} est 100% gratuit et open-source. Aucun frais caché !</p>
+            </div>
+
+            <div class="faq-item" style="background: rgba(30, 41, 59, 0.5); border-left: 3px solid #f59e0b; border-radius: 8px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-weight: 700;">Comment jouer en multijoueur ?</h4>
+              <p style="color: #cbd5e1; margin: 0; font-size: 14px;">Utilise l'onglet Serveurs pour rejoindre des serveurs publics, ou ajoute une adresse IP personnalisée.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🐛 SIGNALER UN BUG -->
         <div id="help-bug-content" class="help-tab-content" style="display: none;">
           <div style="max-width: 900px;">
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
-              <h3 style="color: #e2e8f0; margin-top: 0;">Comment signaler un bug</h3>
-              <ol style="color: #cbd5e1; line-height: 2;">
-                <li><strong style="color: #6366f1;">Vérifiez</strong> que le bug n'a pas déjà été signalé</li>
-                <li><strong style="color: #6366f1;">Décrivez</strong> le problème en détail</li>
-                <li><strong style="color: #6366f1;">Incluez</strong> les étapes pour reproduire le bug</li>
-                <li><strong style="color: #6366f1;">Joignez</strong> les logs et captures d'écran si possible</li>
-                <li><strong style="color: #6366f1;">Envoyez</strong> un rapport sur GitHub</li>
+            <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.1) 100%); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 12px; padding: 28px; margin-bottom: 24px;">
+              <h3 style="color: #e2e8f0; margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;"><span style="display: flex;">${icons.search}</span> Signaler un Bug</h3>
+              <p style="color: #cbd5e1; line-height: 1.7; margin: 0; font-size: 14px;">Merci de nous aider à améliorer ${LauncherVersion.getName()} ! Voici comment bien signaler un problème :</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; margin-bottom: 24px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 16px 0; font-size: 16px; font-weight: 700;"><span style="display: inline-flex; margin-right: 8px;">${icons.clipboard}</span> Étapes à suivre</h4>
+              <ol style="color: #cbd5e1; line-height: 2; margin: 0; padding-left: 20px;">
+                <li><strong style="color: #6366f1;">Vérifiez</strong> que le bug n'a pas déjà été signalé sur GitHub</li>
+                <li><strong style="color: #6366f1;">Décrivez</strong> précisément ce qui s'est passé</li>
+                <li><strong style="color: #6366f1;">Listez</strong> les étapes pour reproduire le bug</li>
+                <li><strong style="color: #6366f1;">Joignez</strong> des captures d'écran ou vidéos si possible</li>
+                <li><strong style="color: #6366f1;">Incluez</strong> vos informations système</li>
               </ol>
             </div>
 
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
-              <h3 style="color: #e2e8f0; margin-top: 0;">Informations à inclure</h3>
-              <div style="background: rgba(15, 23, 42, 0.8); border-left: 3px solid #6366f1; padding: 15px; border-radius: 6px; color: #cbd5e1; font-family: monospace; font-size: 12px; line-height: 1.6;">
-                OS: Windows 10<br/>
-                Version Launcher: ${LauncherVersion.version}<br/>
-                Minecraft Version: 1.20.1<br/>
-                Java Version: 17.0.1<br/>
-                RAM disponible: 8GB<br/>
-                Description du bug: [Décrivez le problème ici]
+            <div style="background: rgba(15, 23, 42, 0.8); border-left: 3px solid #6366f1; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
+              <h4 style="color: #cbd5e1; margin: 0 0 12px 0; font-weight: 700; font-family: monospace; font-size: 13px;"><span style="display: inline-flex; margin-right: 8px;">${icons.clipboard}</span> Exemple de rapport</h4>
+              <div style="color: #a78bfa; font-family: monospace; font-size: 12px; line-height: 1.6;">
+                <div><strong style="color: #cbd5e1;">Titre:</strong> Crash au lancement avec Fabric 1.20.1</div>
+                <div style="margin-top: 8px;"><strong style="color: #cbd5e1;">Description:</strong></div>
+                <div style="margin-top: 4px; color: #94a3b8;">Le jeu crash lors du lancement avec Fabric 1.20.1. Avant il fonctionnait.</div>
+                <div style="margin-top: 8px;"><strong style="color: #cbd5e1;">Reproduction:</strong></div>
+                <div style="margin-top: 4px; color: #94a3b8;">1. Sélectionne une version 1.20.1<br/>2. Choisis Fabric<br/>3. Clique sur Lancer</div>
+                <div style="margin-top: 8px;"><strong style="color: #cbd5e1;">Système:</strong></div>
+                <div style="margin-top: 4px; color: #94a3b8;">OS: Windows 11 | RAM: 16 GB | Launcher: v${LauncherVersion.version}</div>
               </div>
             </div>
 
-            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 25px; text-align: center;">
-              <h3 style="color: #e2e8f0; margin-top: 0; display: flex; align-items: center; gap: 8px;">${icons.clipboard} Créer un rapport</h3>
-              <p style="color: #94a3b8; margin-bottom: 20px;">Utilisez le lien ci-dessous pour créer un nouveau rapport de bug sur GitHub</p>
-              <div class="bug-report-btn" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s;">
-                ${icons.zap} Ouvrir GitHub Issues
+            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.15) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 24px; text-align: center;">
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Ouvrir une Issue sur GitHub</h3>
+              <p style="color: #cbd5e1; margin: 0 0 16px 0; font-size: 14px;">Signale le bug directement sur notre dépôt</p>
+              <div id="help-bug-report-btn" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; border: none;">
+                ${icons.download} Aller à GitHub Issues
               </div>
-            </div>
-
-            <div style="margin-top: 20px; padding: 15px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px;">
-              <p style="color: #cbd5e1; margin: 0; display: flex; align-items: center; gap: 8px;"><strong style="color: #22c55e; display: flex; align-items: center; gap: 6px;">${icons.star} Conseil:</strong> Les rapports détaillés augmentent les chances que le bug soit corrigé rapidement!</p>
             </div>
           </div>
         </div>
 
-        <!-- Contenu Pull Requests -->
+        <!-- 💬 DISCORD -->
+        <div id="help-discord-content" class="help-tab-content" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <div style="background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: 12px; padding: 28px; text-align: center;">
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Rejoins notre communauté</h3>
+              <p style="color: #cbd5e1; margin: 0 0 16px 0; font-size: 14px;">Plus de 1000+ joueurs te répondront sur Discord !</p>
+              <div id="help-discord-join-btn" style="background: #5865F2; padding: 12px 24px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s;">
+                ${icons.messageSquare} Rejoindre Discord
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 12px; padding: 20px;">
+                <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 15px; font-weight: 700;">#général</h4>
+                <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Discussions générales et annonces</p>
+              </div>
+              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 12px; padding: 20px;">
+                <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 15px; font-weight: 700;">#support</h4>
+                <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Aide pour les problèmes</p>
+              </div>
+              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 12px; padding: 20px;">
+                <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 15px; font-weight: 700;">#mods</h4>
+                <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Conseils sur les mods</p>
+              </div>
+              <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 12px; padding: 20px;">
+                <h4 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 15px; font-weight: 700;">#serveurs</h4>
+                <p style="color: #cbd5e1; margin: 0; font-size: 13px;">Partage de serveurs</p>
+              </div>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 24px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 16px 0; font-size: 15px; font-weight: 700;"><span style="display: inline-flex; margin-right: 8px;">${icons.pin}</span> Règles de la communauté</h4>
+              <ul style="color: #cbd5e1; line-height: 1.8; margin: 0; font-size: 14px;">
+                <li>Sois respectueux envers les autres membres</li>
+                <li>Pas de spam, flood ou contenu malveillant</li>
+                <li>Garde les discussions dans les bons canaux</li>
+                <li>Aide les nouveaux et réponds avec gentillesse</li>
+                <li>Pas de publicité ou promotion sans permission</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🤝 CONTRIBUER -->
         <div id="help-pr-content" class="help-tab-content" style="display: none;">
           <div style="max-width: 900px;">
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
-              <h3 style="color: #e2e8f0; margin-top: 0;">Contribuer avec une Pull Request</h3>
-              <p style="color: #cbd5e1; line-height: 1.8;">Vous avez une idée pour améliorer ${LauncherVersion.getName()} ? Vous avez développé une nouvelle fonctionnalité ou corrigé un bug ? Nous accueillons les contributions de la communauté !</p>
-              <ol style="color: #cbd5e1; line-height: 2;">
-                <li><strong style="color: #6366f1;">Forkez</strong> le dépôt sur GitHub</li>
-                <li><strong style="color: #6366f1;">Créez</strong> une nouvelle branche pour votre feature (<code style="color: #a78bfa; background: rgba(15, 23, 42, 0.8); padding: 2px 6px; border-radius: 4px;">git checkout -b feature/ma-feature</code>)</li>
+            <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 28px; margin-bottom: 24px;">
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;"><span style="display: flex;">${icons.handshake}</span> Contribuer au Projet</h3>
+              <p style="color: #cbd5e1; line-height: 1.7; margin: 0; font-size: 14px;">Tout le monde peut aider ! ${LauncherVersion.getName()} est open-source et vos contributions sont bienvenues !</p>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; margin-bottom: 24px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 16px 0; font-size: 16px; font-weight: 700;"><span style="display: inline-flex; margin-right: 8px;">${icons.tool}</span> Comment contribuer</h4>
+              <ol style="color: #cbd5e1; line-height: 2.2; margin: 0; padding-left: 20px;">
+                <li><strong style="color: #6366f1;">Forkez</strong> le dépôt GitHub</li>
+                <li><strong style="color: #6366f1;">Clonez</strong> votre fork sur votre machine</li>
+                <li><strong style="color: #6366f1;">Créez</strong> une branche pour votre feature (<code style="color: #10b981; background: rgba(15, 23, 42, 0.8); padding: 2px 6px; border-radius: 3px;">git checkout -b feature/awesome-feature</code>)</li>
                 <li><strong style="color: #6366f1;">Commitez</strong> vos changements avec des messages clairs</li>
-                <li><strong style="color: #6366f1;">Pushez</strong> vers votre fork (<code style="color: #a78bfa; background: rgba(15, 23, 42, 0.8); padding: 2px 6px; border-radius: 4px;">git push origin feature/ma-feature</code>)</li>
+                <li><strong style="color: #6366f1;">Pushez</strong> vers votre fork</li>
                 <li><strong style="color: #6366f1;">Ouvrez</strong> une Pull Request avec une description détaillée</li>
               </ol>
             </div>
 
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
-              <h3 style="color: #e2e8f0; margin-top: 0;">Directives pour une Pull Request</h3>
-              <ul style="color: #cbd5e1; line-height: 2;">
-                <li>Décrivez clairement les changements apportés</li>
-                <li>Liez les issues si applicable (#123)</li>
-                <li>Vérifiez que votre code suit les standards du projet</li>
-                <li>Testez vos changements en développement et en production</li>
-                <li>Maintenez une branche à jour avec la branche principale</li>
-                <li>Soyez patient pour la revue et ouvert aux suggestions</li>
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 28px; margin-bottom: 24px;">
+              <h4 style="color: #e2e8f0; margin: 0 0 16px 0; font-size: 16px; font-weight: 700;"><span style="display: inline-flex; margin-right: 8px;">${icons.check}</span> Directives pour une Pull Request</h4>
+              <ul style="color: #cbd5e1; line-height: 2; margin: 0; padding-left: 20px;">
+                <li>Décrivez <strong>clairement</strong> ce que votre PR apporte</li>
+                <li>Liez les issues pertinentes (#123)</li>
+                <li>Assurez-vous que le code <strong>compile</strong> sans erreurs</li>
+                <li>Testez votre code <strong>en développement et en production</strong></li>
+                <li>Gardez votre branche à jour avec <code style="color: #10b981; background: rgba(15, 23, 42, 0.8); padding: 2px 6px; border-radius: 3px;">main</code></li>
+                <li>Soyez <strong>patient</strong> pour la revue et <strong>ouvert</strong> aux suggestions</li>
               </ul>
             </div>
 
-            <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.2) 100%); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 25px; text-align: center;">
-              <h3 style="color: #e2e8f0; margin-top: 0; display: flex; align-items: center; gap: 8px;">${icons.download} Ouvrir une Pull Request</h3>
-              <p style="color: #94a3b8; margin-bottom: 20px;">Consultez nos pull requests en cours et créez la vôtre sur GitHub</p>
-              <div class="pr-request-btn" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s;">
-                ${icons.zap} Gérer les Pull Requests
+            <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.15) 100%); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 24px; text-align: center;">
+              <h3 style="color: #e2e8f0; margin: 0 0 8px 0; font-size: 16px; font-weight: 700;">Voir le projet sur GitHub</h3>
+              <p style="color: #cbd5e1; margin: 0 0 16px 0; font-size: 14px;">Retrouvez le code complet et la documentation</p>
+              <div id="help-github-project-btn" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s;">
+                ${icons.download} Aller à GitHub
               </div>
             </div>
 
-            <div style="margin-top: 20px; padding: 15px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px;">
-              <p style="color: #cbd5e1; margin: 0; display: flex; align-items: center; gap: 8px;"><strong style="color: #6366f1; display: flex; align-items: center; gap: 6px;">${icons.heart} Merci:</strong> Votre contribution rend ${LauncherVersion.getName()} meilleur pour toute la communauté !</p>
+            <div style="margin-top: 24px; padding: 20px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 8px;">
+              <p style="color: #cbd5e1; margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px;"><span style="display: flex;">${icons.heart}</span> <strong style="color: #22c55e;">Merci !</strong> Votre contribution rend ${LauncherVersion.getName()} meilleur pour tous !</p>
             </div>
           </div>
         </div>
+      </div>
     `;
   }
 
@@ -2306,6 +2436,13 @@ renderMainLayout() {
 
   renderPartnersView() {
     const partners = [
+      { 
+        name: 'PharosSMP',
+        logo: '🛡️',
+        description: 'Un serveur SMP privé pour les membres de la communauté Pharos',
+        website: 'http://176.161.97.30',
+        joinUrl: '176.161.97.30'
+      },
       { 
         name: 'LunaVerse',
         logo: '🌕',
@@ -3692,6 +3829,115 @@ renderMainLayout() {
           nextInput.value = e.target.value;
         }
       });
+    });
+
+    // ==========================================
+    // ✅ PAGE AIDE & SUPPORT - ONGLETS
+    // ==========================================
+    document.getElementById('help-docs-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.help-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById('help-docs-content').style.display = 'block';
+      document.querySelectorAll('.help-tab-btn').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = '#94a3b8';
+        btn.style.border = '1px solid rgba(99, 102, 241, 0.2)';
+      });
+      e.target.style.background = 'rgba(99, 102, 241, 0.25)';
+      e.target.style.color = '#e2e8f0';
+    });
+
+    document.getElementById('help-faq-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.help-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById('help-faq-content').style.display = 'block';
+      document.querySelectorAll('.help-tab-btn').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = '#94a3b8';
+        btn.style.border = '1px solid rgba(99, 102, 241, 0.2)';
+      });
+      e.target.style.background = 'rgba(99, 102, 241, 0.25)';
+      e.target.style.color = '#e2e8f0';
+    });
+
+    document.getElementById('help-bug-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.help-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById('help-bug-content').style.display = 'block';
+      document.querySelectorAll('.help-tab-btn').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = '#94a3b8';
+        btn.style.border = '1px solid rgba(99, 102, 241, 0.2)';
+      });
+      e.target.style.background = 'rgba(99, 102, 241, 0.25)';
+      e.target.style.color = '#e2e8f0';
+    });
+
+    document.getElementById('help-discord-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.help-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById('help-discord-content').style.display = 'block';
+      document.querySelectorAll('.help-tab-btn').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = '#94a3b8';
+        btn.style.border = '1px solid rgba(99, 102, 241, 0.2)';
+      });
+      e.target.style.background = 'rgba(99, 102, 241, 0.25)';
+      e.target.style.color = '#e2e8f0';
+    });
+
+    document.getElementById('help-pr-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.help-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById('help-pr-content').style.display = 'block';
+      document.querySelectorAll('.help-tab-btn').forEach(btn => {
+        btn.style.background = 'transparent';
+        btn.style.color = '#94a3b8';
+        btn.style.border = '1px solid rgba(99, 102, 241, 0.2)';
+      });
+      e.target.style.background = 'rgba(99, 102, 241, 0.25)';
+      e.target.style.color = '#e2e8f0';
+    });
+
+    // ✅ CARTES D'ACTION RAPIDE - Documentation
+    document.querySelectorAll('.help-quick-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.getElementById('help-docs-btn')?.click();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+
+    // ✅ CARTES DE DOCUMENTATION - Cliquables
+    const docsContent = document.getElementById('help-docs-content');
+    if (docsContent) {
+      const cards = docsContent.querySelectorAll('div[style*="background: rgba(30, 41, 59"]');
+      cards.forEach(card => {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => {
+          const title = card.querySelector('h3')?.textContent;
+          this.ui.showToast({
+            title: 'Plus d\'infos',
+            message: `Consultez la section ${title} sur GitHub pour plus de détails.`,
+            type: 'info',
+            duration: 3000
+          });
+        });
+      });
+    }
+
+    // ✅ BOUTONS D'ACTION - DISCORD
+    document.getElementById('help-discord-join-btn')?.addEventListener('click', () => {
+      require('electron').shell.openExternal('https://discord.gg/rCFBHZencT');
+    });
+
+    // ✅ BOUTONS D'ACTION - GITHUB ISSUES
+    document.getElementById('help-bug-report-btn')?.addEventListener('click', () => {
+      require('electron').shell.openExternal('https://github.com/velkora/launcher/issues/new');
+    });
+
+    // ✅ BOUTONS D'ACTION - GITHUB PROJECT
+    document.getElementById('help-github-project-btn')?.addEventListener('click', () => {
+      require('electron').shell.openExternal('https://github.com/velkora/launcher');
     });
   }
 

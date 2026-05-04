@@ -88,6 +88,7 @@ class DiscordPresence extends EventEmitter {
       try {
         // Supprimer tous les listeners
         this.client.removeAllListeners();
+        this.client.destroy()
         
         // Essayer de détruire proprement
         if (this.client.transport && this.client.transport.socket) {
@@ -131,8 +132,8 @@ class DiscordPresence extends EventEmitter {
       console.log('🔗 Connecting to Discord RPC with Client ID:', this.clientId);
 
       // Créer un nouveau client
-      this.client = new DiscordRPC.Client({ 
-        transport: 'ipc'
+      this.client = new DiscordRPC.Client({
+        transport: process.platform === 'win32' ? 'ipc' : 'ipc'
       });
 
       console.log('✓ Discord RPC client created');
@@ -196,9 +197,25 @@ class DiscordPresence extends EventEmitter {
 
       // Appliquer l'activité en attente si présente
       if (this.currentActivity) {
-        setTimeout(() => {
-          this.applyActivity(this.currentActivity);
-        }, 500);
+        const queuedActivity = this.currentActivity;
+
+        this.activityUpdateTimeout = setTimeout(async () => {
+          if (!this.isConnected || !this.client) return;
+
+          try {
+            if (!queuedActivity || typeof queuedActivity !== 'object') return;
+
+            await this.client.setActivity(queuedActivity);
+            console.log(
+              '✅ Discord activity updated:',
+              queuedActivity.details || queuedActivity.state || 'Activity set'
+            );
+            this.emit('activityUpdated', queuedActivity);
+          } catch (e) {
+            console.error('❌ Error updating activity:', e.message);
+            this.emit('activityUpdateError', e);
+          }
+        }, 300);
       }
 
       return true;
@@ -306,28 +323,34 @@ class DiscordPresence extends EventEmitter {
     }
 
     try {
-      // Nettoyer le timeout précédent
       if (this.activityUpdateTimeout) {
         clearTimeout(this.activityUpdateTimeout);
         this.activityUpdateTimeout = null;
       }
 
-      // Appliquer l'activité avec un délai pour éviter le spam
+      const queuedActivity = activity;
+
       this.activityUpdateTimeout = setTimeout(async () => {
         this.activityUpdateTimeout = null;
-        
+
+        if (!this.isConnected || !this.client) return;
+
         try {
-          await this.client.setActivity(activity);
-          console.log('✅ Discord activity updated:', activity.details || activity.state || 'Activity set');
-          this.emit('activityUpdated', activity);
+          if (!queuedActivity || typeof queuedActivity !== 'object') return;
+
+          await this.client.setActivity(queuedActivity);
+          console.log(
+            '✅ Discord activity updated:',
+            queuedActivity.details || queuedActivity.state || 'Activity set'
+          );
+          this.emit('activityUpdated', queuedActivity);
         } catch (error) {
           console.error('❌ Error updating activity:', error.message);
           this.emit('activityUpdateError', error);
         }
-      }, 100);
+      }, 300);
 
       return true;
-
     } catch (error) {
       console.error('❌ Error applying activity:', error.message);
       return false;
@@ -386,6 +409,7 @@ class DiscordPresence extends EventEmitter {
     }
 
     const { server, players, modpack } = options;
+    const isDiscordRunning = require('ps-list');
     
     let state = this.rpcSettings.showStatus ? `🎮 Version ${version}` : undefined;
     
