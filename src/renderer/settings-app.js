@@ -709,6 +709,107 @@ function initDiscordTest() {
   discordTestManager.init();
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeChangelog(value) {
+  const raw = String(value || '').replace(/\r\n/g, '\n').trim();
+  if (!raw) return '';
+
+  return raw
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^[-*]\s+/gm, '• ')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, 40)
+    .join('\n');
+}
+
+function compareVersions(v1, v2) {
+  const parts1 = String(v1 || '').trim().split('.').map(Number);
+  const parts2 = String(v2 || '').trim().split('.').map(Number);
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const p1 = parts1[i] || 0;
+    const p2 = parts2[i] || 0;
+    if (p1 > p2) return 1;
+    if (p1 < p2) return -1;
+  }
+  return 0;
+}
+
+async function refreshUpdateStatus() {
+  const statusEl = document.getElementById('update-status');
+  const currentVersionEl = document.getElementById('update-current-version');
+  const latestVersionEl = document.getElementById('update-latest-version');
+  const changelogEl = document.getElementById('update-changelog');
+  const checkBtn = document.getElementById('check-updates-btn');
+  const installBtn = document.getElementById('install-update-btn');
+
+  if (!statusEl || !currentVersionEl || !latestVersionEl || !changelogEl) return;
+
+  if (checkBtn) checkBtn.disabled = true;
+  if (installBtn) installBtn.disabled = true;
+  statusEl.textContent = 'Vérification en cours…';
+  statusEl.style.color = '#fbbf24';
+  currentVersionEl.textContent = 'Chargement…';
+  latestVersionEl.textContent = 'Chargement…';
+  changelogEl.innerHTML = '<em>Analyse des mises à jour…</em>';
+
+  try {
+    const updateInfo = await ipcRenderer.invoke('check-updates');
+    const currentVersion = updateInfo?.currentVersion || 'inconnue';
+    const latestVersion = updateInfo?.latestVersion || currentVersion;
+
+    currentVersionEl.textContent = currentVersion;
+    latestVersionEl.textContent = latestVersion;
+
+    const releaseNotes = updateInfo?.releaseNotes || '';
+    let changelogText = normalizeChangelog(releaseNotes);
+
+    changelogEl.innerHTML = escapeHtml(changelogText || 'Aucun changelog disponible pour cette version.').replace(/\n/g, '<br>');
+
+    const versionCompare = compareVersions(latestVersion, currentVersion);
+    const hasUpdate = updateInfo?.hasUpdate || versionCompare > 0;
+
+    if (hasUpdate) {
+      statusEl.textContent = `Mise à jour disponible : ${latestVersion}`;
+      statusEl.style.color = '#34d399';
+      if (installBtn) installBtn.disabled = false;
+    } else {
+      statusEl.textContent = 'Vous êtes déjà à jour.';
+      statusEl.style.color = '#60a5fa';
+      if (installBtn) installBtn.disabled = true;
+    }
+  } catch (error) {
+    statusEl.textContent = 'Impossible de vérifier les mises à jour.';
+    statusEl.style.color = '#f87171';
+    changelogEl.innerHTML = '<em>Vérification impossible. Veuillez réessayer plus tard.</em>';
+    console.error('Update check failed:', error);
+  } finally {
+    if (checkBtn) checkBtn.disabled = false;
+  }
+}
+
+async function installUpdateFromSettings() {
+  try {
+    const result = await ipcRenderer.invoke('install-update');
+    if (result?.success) {
+      window.alert('La mise à jour va être installée. Le launcher va redémarrer ou se fermer au besoin.');
+    } else {
+      window.alert(result?.error || 'Aucune mise à jour n\'a été préparée.');
+    }
+  } catch (error) {
+    window.alert(`Impossible d\'installer la mise à jour : ${error?.message || error}`);
+  }
+}
+
 function renderSettings() {
   const app = document.getElementById('app');
   
@@ -758,6 +859,9 @@ function renderSettings() {
           </button>
           <button class="menu-category" data-tab="discord">
             <span class="menu-icon"><i class="bi bi-discord"></i></span><span class="menu-text">Discord</span>
+          </button>
+          <button class="menu-category" data-tab="updates">
+            <span class="menu-icon"><i class="bi bi-arrow-repeat"></i></span><span class="menu-text">Mises à jour</span>
           </button>
           
           <button class="menu-category" data-tab="about">
@@ -1159,6 +1263,39 @@ function renderSettings() {
 
         
 
+        <div class="settings-section" id="updates-tab" style="display: none;">
+          <h2>Mises à jour</h2>
+
+          <div class="settings-card">
+            <h3>Vérifier les mises à jour</h3>
+            <div class="setting-item">
+              <label>État</label>
+              <p id="update-status" style="color: #60a5fa; padding: 10px 0; font-weight: 600;">Vérification non lancée</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
+              <label>Version actuelle</label>
+              <p id="update-current-version" style="color: #d1d5db; padding: 10px 0; font-weight: 500;">Chargement…</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
+              <label>Version disponible</label>
+              <p id="update-latest-version" style="color: #d1d5db; padding: 10px 0; font-weight: 500;">Chargement…</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="check-updates-btn" class="btn-primary">Rechercher une mise à jour</button>
+                <button id="install-update-btn" class="btn-secondary">Installer la mise à jour</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Changelog</h3>
+            <div id="update-changelog" style="color: #d1d5db; line-height: 1.7; white-space: pre-wrap; max-height: 420px; overflow: auto; padding-right: 6px;">
+              Chargement du changelog…
+            </div>
+          </div>
+        </div>
+
         <div class="settings-section" id="about-tab" style="display: none;">
           <h2>A propos</h2>
           <div class="settings-card">
@@ -1265,6 +1402,9 @@ function renderSettings() {
               } catch (_) {}
             }, 250);
           }
+          if (btn.dataset.tab === 'updates') {
+            setTimeout(() => refreshUpdateStatus(), 150);
+          }
         };
         
         await window.pageLoader.loadPage(renderFunction, setupFunction, true);
@@ -1292,6 +1432,18 @@ function renderSettings() {
 
   // ✅ SETUP RECHERCHE
   setupSearchFunctionality();
+
+  const checkUpdatesBtn = document.getElementById('check-updates-btn');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', () => refreshUpdateStatus());
+  }
+
+  const installUpdateBtn = document.getElementById('install-update-btn');
+  if (installUpdateBtn) {
+    installUpdateBtn.addEventListener('click', installUpdateFromSettings);
+  }
+
+  setTimeout(() => refreshUpdateStatus(), 250);
 
   // ✅ PARCOURIR REPERTOIRE
   const browseBtn = document.getElementById('browse-btn');
@@ -1680,28 +1832,6 @@ function renderSettings() {
     cancelBtn.addEventListener('click', () => {
       ipcRenderer.send('close-settings-window');
     });
-  }
-
-  // Vérification/installation manuelle désactivée : les mises à jour sont automatiques et silencieuses côté main.
-
-  // ✅ UPDATES - INSTALL UPDATE
-  const installUpdateBtn = document.getElementById('install-update-btn');
-  if (installUpdateBtn) {
-    // Retirer le bouton d'installation manuelle (mise à jour forcée et silencieuse au démarrage)
-    installUpdateBtn.style.display = 'none';
-  }
-
-  // ✅ MANUAL UPDATE CHECK BUTTON (in settings)
-  const manualCheckUpdateBtn = document.getElementById('manual-check-update-btn');
-  if (manualCheckUpdateBtn) {
-    manualCheckUpdateBtn.style.display = 'none';
-  }
-
-  // ✅ AUTO UPDATE BUTTON (in settings)
-  const autoInstallUpdateBtn = document.getElementById('auto-install-update-btn');
-  if (autoInstallUpdateBtn) {
-    // L'auto-update est forcée au démarrage; masquer le contrôle
-    autoInstallUpdateBtn.style.display = 'none';
   }
 
   // ✅ SAVE GAME TAB

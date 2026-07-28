@@ -1778,16 +1778,9 @@ app.whenReady().then(async () => {
   // ✅ VÉRIFIER ET INSTALLER LES MISES À JOUR AUTOMATIQUEMENT
   setTimeout(async () => {
     try {
-      // Forcer la vérification et l'installation silencieuse des mises à jour au démarrage
-      console.log('\n[o] Auto checking for updates on startup (forced silent mode)...');
-      const updateResult = await checkUpdatesWithSettings(true);
-      if (updateResult.hasUpdate) {
-        console.log('✅ Automatic (silent) update triggered on startup');
-      } else {
-        console.log('[v] You are up to date');
-      }
+      await checkUpdatesWithSettings(true);
     } catch (error) {
-      console.error('[!] Error checking for updates:', error.message);
+      console.error('Error checking for updates:', error.message);
     }
   }, 2000);
 
@@ -2180,7 +2173,7 @@ function shouldShowNotification(type, settings = null) {
   switch (type) {
     case 'launch': return notifSettings.launchNotif;
     case 'download': return notifSettings.downloadNotif;
-    case 'update': return false; // Désactiver les notifications de mise à jour (gérées silencieusement)
+    case 'update': return notifSettings.updateNotif !== false;
     case 'error': return notifSettings.errorNotif;
     default: return true;
   }
@@ -3598,104 +3591,31 @@ ipcMain.handle('add-news', async (event, newsItem) => {
   }
 });
 
-// ✅ UPDATES - FONCTION POUR EXTRAIRE LA VERSION DU NOM DE RELEASE
-function extractVersionFromReleaseName(releaseName) {
-  // Cherche un pattern comme "v3.1.57" ou "3.1.57" dans le nom
-  const versionRegex = /v?(\d+\.\d+\.\d+)/i;
-  const match = releaseName.match(versionRegex);
+// ✅ UPDATES - FONCTION POUR EXTRAIRE LA VERSION DU TAG (ou du nom) DE RELEASE
+function extractVersionFromReleaseName(release) {
+  const source = String(release?.tag_name || release?.name || '').trim();
+  // Cherche un pattern comme "v3.1.57", "3.1.57" ou "v4.4.4"
+  const versionRegex = /v?(\d+(?:\.\d+){1,3})/i;
+  const match = source.match(versionRegex);
   return match ? match[1] : null;
 }
 
-// ✅ UPDATES - VÉRIFIER ET INSTALLER AUTOMATIQUEMENT
-async function checkUpdatesAndInstall() {
-  try {
-    const pkg = require('../../package.json');
-    const currentVersion = pkg.version;
-    
-    // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases/', {
-      headers: { 'User-Agent': `${LAUNCHER_NAME}/${LAUNCHER_VERSION}` }
-    });
-    
-    if (!response.ok) {
-      return { hasUpdate: false, error: 'GitHub API unavailable' };
-    }
-    
-    const releases = await response.json();
-    
-    // Chercher la dernière release stable
-    let latestRelease = null;
-    let latestVersion = null;
-    
-    for (const release of releases) {
-      if (!release.draft && !release.prerelease && release.assets && release.assets.length > 0) {
-        const version = extractVersionFromReleaseName(release.name);
-        if (version) {
-          latestRelease = release;
-          latestVersion = version;
-          break;
-        }
-      }
-    }
-    
-    if (!latestRelease || !latestVersion) {
-      return { hasUpdate: false, error: 'No release found' };
-    }
-    
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
-    
-    if (!hasUpdate) {
-      return { hasUpdate: false };
-    }
-    
-    // New version found! Download and install
-    console.log(`\n🎉 New version available: v${latestVersion}`);
-    
-    const exeAsset = latestRelease.assets.find(a => a.name.endsWith('.exe'));
-    if (!exeAsset) {
-      return { hasUpdate: true, error: 'No .exe file found' };
-    }
-    
-    const downloadUrl = exeAsset.browser_download_url;
-    const fileName = exeAsset.name;
-    const updatePath = path.join(os.tmpdir(), fileName);
-    
-    console.log(`📥 Downloading v${latestVersion}...`);
-    const downloadResponse = await fetch(downloadUrl);
-    
-    if (!downloadResponse.ok) {
-      return { hasUpdate: true, error: 'Download failed' };
-    }
-    
-    const buffer = Buffer.from(await downloadResponse.arrayBuffer());
-    fs.writeFileSync(updatePath, buffer);
-    
-    console.log(`✓ ${fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
-    console.log('🚀 Automatic installation in progress...\n');
-    
-    // Launch the installer silently on Windows (NSIS /S). Fallback to shell.openPath.
-    if (process.platform === 'win32') {
-      try {
-        spawn(updatePath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
-      } catch (e) {
-        await shell.openPath(updatePath);
-      }
-    } else {
-      await shell.openPath(updatePath);
-    }
-    
-    // Quit the app after a delay to ensure installer launches
-    setTimeout(() => {
-      app.quit();
-    }, 1000);
-    
-    return { hasUpdate: true, installed: true };
-  } catch (error) {
-    console.error('❌ Auto-update error:', error.message);
-    return { hasUpdate: false, error: error.message };
+function selectLatestReleaseCandidate(releases) {
+  const candidates = [];
+  for (const release of Array.isArray(releases) ? releases : []) {
+    if (!release || release.draft) continue;
+    if (!release.assets || release.assets.length === 0) continue;
+    const version = extractVersionFromReleaseName(release);
+    if (!version) continue;
+    candidates.push({ release, version });
   }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => compareVersions(b.version, a.version));
+  return candidates[0];
 }
 
+// ✅ UPDATES - VÉRIFIER ET INSTALLER AUTOMATIQUEMENT
 // ✅ UPDATES - CHECK WITH SETTINGS (autoUpdate parameter handling)
 async function checkUpdatesWithSettings(autoUpdate = true) {
   try {
@@ -3703,7 +3623,7 @@ async function checkUpdatesWithSettings(autoUpdate = true) {
     const currentVersion = pkg.version;
     
     // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases/', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora-Client/releases/', {
       headers: { 'User-Agent': `${LAUNCHER_NAME}/${LAUNCHER_VERSION}` }
     });
     
@@ -3712,60 +3632,40 @@ async function checkUpdatesWithSettings(autoUpdate = true) {
     }
     
     const releases = await response.json();
+    const candidate = selectLatestReleaseCandidate(releases);
     
-    // Chercher la dernière release stable
-    let latestRelease = null;
-    let latestVersion = null;
-    
-    for (const release of releases) {
-      if (!release.draft && !release.prerelease && release.assets && release.assets.length > 0) {
-        const version = extractVersionFromReleaseName(release.name);
-        if (version) {
-          latestRelease = release;
-          latestVersion = version;
-          break;
-        }
-      }
-    }
-    
-    if (!latestRelease || !latestVersion) {
+    if (!candidate) {
       return { hasUpdate: false, error: 'No release found' };
     }
+
+    const latestRelease = candidate.release;
+    const latestVersion = candidate.version;
     
     const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
     
     if (!hasUpdate) {
       return { hasUpdate: false };
     }
-    
-    // New version found!
-    console.log(`\n🎉 New version available: v${latestVersion}`);
-    
+
     const exeAsset = latestRelease.assets.find(a => a.name.endsWith('.exe'));
     if (!exeAsset) {
       return { hasUpdate: true, error: 'No .exe file found' };
     }
-    
-    // Si autoUpdate est activé, télécharger et installer
+
     if (autoUpdate) {
+      showNotification('update', 'Mise à jour disponible', `Velkora v${latestVersion} est disponible et sera installée silencieusement.`);
       const downloadUrl = exeAsset.browser_download_url;
       const fileName = exeAsset.name;
       const updatePath = path.join(os.tmpdir(), fileName);
-      
-      console.log(`📥 Downloading v${latestVersion}...`);
+
       const downloadResponse = await fetch(downloadUrl);
-      
       if (!downloadResponse.ok) {
         return { hasUpdate: true, error: 'Download failed', needsManualInstall: true };
       }
-      
+
       const buffer = Buffer.from(await downloadResponse.arrayBuffer());
       fs.writeFileSync(updatePath, buffer);
-      
-      console.log(`✓ ${fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
-      console.log('🚀 Automatic installation in progress...\n');
-      
-      // Launch the installer silently on Windows (NSIS /S). Fallback to shell.openPath.
+
       if (process.platform === 'win32') {
         try {
           spawn(updatePath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
@@ -3775,15 +3675,13 @@ async function checkUpdatesWithSettings(autoUpdate = true) {
       } else {
         await shell.openPath(updatePath);
       }
-      
-      // Quit the app after a delay
+
       setTimeout(() => {
         app.quit();
       }, 1000);
-      
+
       return { hasUpdate: true, installed: true };
     } else {
-      // Si autoUpdate est désactivé, juste envoyer une notification
       showNotification('update', 'Mise à jour disponible', `Velkora v${latestVersion} est disponible ! Rendez-vous dans les paramètres pour l'installer.`);
       return { hasUpdate: true, installed: false };
     }
@@ -3802,15 +3700,12 @@ ipcMain.handle('check-updates', async () => {
     const pkg = require('../../package.json');
     const currentVersion = pkg.version;
     
-    console.log(`[o] Checking for updates (Current: v${currentVersion})...`);
-    
-    // Récupérer les 5 dernières releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora/releases', {
+    // Récupérer les releases disponibles
+    const response = await fetch('https://api.github.com/repos/pharos-off/Velkora-Client/releases', {
       headers: { 'User-Agent': LAUNCHER_NAME }
     });
     
     if (!response.ok) {
-      console.log('⚠️ Unable to check for updates (GitHub API)');
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -3820,24 +3715,9 @@ ipcMain.handle('check-updates', async () => {
     }
     
     const releases = await response.json();
+    const candidate = selectLatestReleaseCandidate(releases);
     
-    // Chercher la dernière release stable (pas prerelease)
-    let latestRelease = null;
-    let latestVersion = null;
-    
-    for (const release of releases) {
-      if (!release.draft && !release.prerelease && release.assets && release.assets.length > 0) {
-        const version = extractVersionFromReleaseName(release.name);
-        if (version) {
-          latestRelease = release;
-          latestVersion = version;
-          break;
-        }
-      }
-    }
-    
-    if (!latestRelease || !latestVersion) {
-      console.log('⚠️ No stable release found');
+    if (!candidate) {
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -3845,14 +3725,15 @@ ipcMain.handle('check-updates', async () => {
         error: 'Aucune release trouvée'
       };
     }
+
+    const latestRelease = candidate.release;
+    const latestVersion = candidate.version;
     
     const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
     
-    // Chercher le fichier .exe
     const exeAsset = latestRelease.assets.find(a => a.name.endsWith('.exe'));
     
     if (!exeAsset) {
-      console.log('⚠️ No .exe file found');
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -3861,7 +3742,6 @@ ipcMain.handle('check-updates', async () => {
       };
     }
     
-    // Stocker les données pour l'installation
     latestUpdateData = {
       hasUpdate: hasUpdate,
       currentVersion: currentVersion,
@@ -3873,10 +3753,7 @@ ipcMain.handle('check-updates', async () => {
     };
     
     if (hasUpdate) {
-      console.log(`✅ New version available: v${latestVersion}`);
       showNotification('update', 'Mise à jour disponible', `Velkora v${latestVersion} est disponible !`);
-    } else {
-      console.log('[v] You are using the latest version');
     }
     
     return latestUpdateData;
@@ -3895,14 +3772,11 @@ ipcMain.handle('check-updates', async () => {
 ipcMain.handle('install-update', async () => {
   try {
     if (!latestUpdateData || !latestUpdateData.downloadUrl) {
-      console.log('⚠️ No update available');
       return { success: false, error: 'No update found. Check first.' };
     }
     
-    console.log(`📥 Downloading v${latestUpdateData.latestVersion}...`);
     const updatePath = path.join(os.tmpdir(), latestUpdateData.fileName);
     
-    // Download the update
     const response = await fetch(latestUpdateData.downloadUrl);
     if (!response.ok) {
       throw new Error(`HTTP error: ${response.status}`);
@@ -3911,10 +3785,6 @@ ipcMain.handle('install-update', async () => {
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(updatePath, buffer);
     
-    console.log(`✓ ${latestUpdateData.fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
-    console.log('🚀 Launching the installer...');
-    
-    // Launch the installer silently on Windows (NSIS /S). Fallback to shell.openPath.
     if (process.platform === 'win32') {
       try {
         spawn(updatePath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
@@ -3926,9 +3796,7 @@ ipcMain.handle('install-update', async () => {
     }
     showNotification('download', 'Téléchargement terminé', `Velkora v${latestUpdateData.latestVersion} a été téléchargé.`);
     
-    // Close the app after a delay to ensure installer launches
     setTimeout(() => {
-      console.log('🔄 Closing application...');
       app.quit();
     }, 1000);
     
