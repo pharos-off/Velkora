@@ -117,6 +117,8 @@ class CraftLauncherApp {
     this.pageLoader = new PageLoader(); // ✅ Initialiser le PageLoader
     this.isFirstContentRender = true; // ✅ Flag pour le premier rendu de contenu
     this.lastRenderedView = null; // ✅ Tracker la dernière vue rendue pour éviter les recharges inutiles
+    this.renderRequestId = 0; // ✅ Éviter qu'un ancien rendu bloque la navigation
+    this.isRenderingView = false;
     
     // ✅ Utiliser le gestionnaire de thème au lieu de dupliquer les données
     this.themePresets = window.themeManager.themePresets;
@@ -132,8 +134,8 @@ class CraftLauncherApp {
 
     this.popularServers = [
       { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '—', icon: 'https://hypixel.net/favicon.ico' },
-      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '—', icon: 'https://www.google.com/s2/favicons?domain=cubecraft.net&sz=256' },
-      { name: 'BlocksMC', ip: 'play.blocksmc.com', description: 'BedWars, SkyWars', players: '—', icon: 'https://www.google.com/s2/favicons?domain=blocksmc.com&sz=256' },
+      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '—', icon: 'https://forums.cubecraftcdn.com/xenforo/serve/styles/cubecraft/cubecraft/cube-512x512.png' },
+      { name: 'BlocksMC', ip: 'play.blocksmc.com', description: 'BedWars, SkyWars', players: '—', icon: 'https://blocksmc.com/src/v2/images/logo.png' },
       { name: 'Minehut', ip: 'play.minehut.com', description: 'Réseau de serveurs', players: '—', icon: 'https://minehut.com/favicon.ico' },
     ];
     this.init();
@@ -267,6 +269,118 @@ class CraftLauncherApp {
     };
 
     return labels[String(loader || '').toLowerCase()] || 'Loader';
+  }
+
+  // --- Playtime helpers ---
+  getTotalPlaytimeMs() {
+    try {
+      const v = localStorage.getItem('velkora_total_playtime_ms') || '0';
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? 0 : n;
+    } catch (e) { return 0; }
+  }
+
+  setTotalPlaytimeMs(ms) {
+    try { localStorage.setItem('velkora_total_playtime_ms', String(Math.max(0, Math.floor(ms)))); } catch (e) {}
+  }
+
+  formatDuration(ms) {
+    if (!ms || ms <= 0) return '0s';
+    const total = Math.floor(ms / 1000);
+    const hours = Math.floor(total / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  startPlaytimeTracking() {
+    // Eviter doublons
+    if (this._playtimeInterval) return;
+    const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || Date.now();
+    localStorage.setItem('velkora_game_start_ts', String(start));
+    this._playtimeInterval = setInterval(() => this.updatePlaytimeDisplay(), 1000);
+    this.updatePlaytimeDisplay();
+  }
+
+  stopPlaytimeTracking() {
+    if (this._playtimeInterval) {
+      clearInterval(this._playtimeInterval);
+      this._playtimeInterval = null;
+    }
+    // Supprimer timestamp de démarrage
+    try { localStorage.removeItem('velkora_game_start_ts'); } catch (e) {}
+    this.updatePlaytimeDisplay();
+  }
+
+  updatePlaytimeDisplay() {
+    try {
+      const el = document.getElementById('total-playtime-value');
+      const stored = this.getTotalPlaytimeMs();
+      const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
+      const now = Date.now();
+      const runningDelta = start && start < now ? (now - start) : 0;
+      const total = stored + runningDelta;
+      if (el) el.textContent = this.formatDuration(total);
+    } catch (e) {}
+  }
+
+  // --- Stats view auto-update ---
+  updateStatsView() {
+    try {
+      // Total playtime (cumule stored + running)
+      const stored = this.getTotalPlaytimeMs();
+      const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
+      const running = start && start < Date.now() ? (Date.now() - start) : 0;
+      const total = stored + running;
+      const elTotal = document.getElementById('stats-total-playtime');
+      if (elTotal) elTotal.textContent = this.formatDuration(total);
+
+      const elLast = document.getElementById('stats-last-played');
+      if (elLast) elLast.textContent = this.selectedProfile?.lastPlayed || 'Jamais';
+
+      const elLaunch = document.getElementById('stats-is-launching');
+      if (elLaunch) elLaunch.textContent = this.isLaunching ? 'Oui' : 'Non';
+
+      const elNet = document.getElementById('stats-network-status');
+      if (elNet) elNet.textContent = this.networkStatus || 'inconnu';
+    } catch (e) {}
+  }
+
+  startStatsAutoUpdate() {
+    if (this._statsInterval) return;
+    this.updateStatsView();
+    this._statsInterval = setInterval(() => this.updateStatsView(), 1000);
+  }
+
+  stopStatsAutoUpdate() {
+    if (!this._statsInterval) return;
+    clearInterval(this._statsInterval);
+    this._statsInterval = null;
+  }
+
+  // Public handler called by button onclick as a robust entrypoint
+  async handleStatsReset() {
+    try {
+      const confirmed = await this.ui.showConfirm({
+        title: 'Réinitialiser les statistiques ?',
+        message: 'Cette action remettra à zéro le temps de jeu total localement.',
+        confirmLabel: 'Réinitialiser',
+        cancelLabel: 'Annuler',
+        type: 'error'
+      });
+      if (!confirmed) return;
+      this.stopPlaytimeTracking();
+      this.setTotalPlaytimeMs(0);
+      try { localStorage.removeItem('velkora_game_start_ts'); } catch(_) {}
+      this.updatePlaytimeDisplay();
+      this.updateStatsView();
+      this.ui.showToast({ title: 'Statistiques réinitialisées', message: 'Le temps de jeu a été remis à zéro.', type: 'success' });
+    } catch (err) {
+      console.error('Erreur handleStatsReset:', err);
+      this.ui.showToast({ title: 'Erreur', message: 'Impossible de réinitialiser les statistiques.', type: 'error' });
+    }
   }
 
   getAvailableLoadersForVersion(version = this.selectedProfile?.version) {
@@ -687,6 +801,8 @@ class CraftLauncherApp {
       this.applyAccentColor(accent);
       
       // Puis charger le contenu asynchrone
+      // Mettre à jour l'affichage du temps de jeu présent dans le layout
+      try { this.updatePlaytimeDisplay(); } catch (e) {}
       this.renderContentAsync(forceRerender);
     }
   }
@@ -697,6 +813,8 @@ class CraftLauncherApp {
     if (!contentDiv) return;
 
     try {
+      // Stop any stats auto-update running for the previous view
+      try { if (this._statsInterval) { clearInterval(this._statsInterval); this._statsInterval = null; } } catch(_) {}
       // ✅ Supprimer les event listeners des anciens éléments
       const oldElements = contentDiv.querySelectorAll('[data-listener]');
       oldElements.forEach(el => {
@@ -752,13 +870,22 @@ class CraftLauncherApp {
       return;
     }
 
+    const requestId = ++this.renderRequestId;
+    this.isRenderingView = true;
+
     // ✅ VÉRIFIER SI LA VUE N'A PAS CHANGÉ (sauf si forceRerender)
     if (!forceRerender && this.currentView === this.lastRenderedView) {
+      this.isRenderingView = false;
       this.pageLoader.hide(); // ✅ Cacher le loading screen si montré
       return;
     }
 
     try {
+      // ✅ Si une navigation précédente est encore en cours, on la nettoie proprement
+      if (requestId > 1) {
+        this.pageLoader.cancel();
+      }
+
       // ✅ UTILISER LE PAGE LOADER POUR LES CHANGEMENTS DE PAGES
       const renderFunction = async () => {
         return await this.renderCurrentView();
@@ -778,6 +905,10 @@ class CraftLauncherApp {
       // ✅ Ne pas afficher le loading screen lors des changements de pages (transisions directes)
       const shouldShowLoading = false;
       await this.pageLoader.loadPage(renderFunction, setupFunction, shouldShowLoading);
+
+      if (requestId !== this.renderRequestId) {
+        return;
+      }
       
       // ✅ Mettre à jour la dernière vue rendue
       this.lastRenderedView = this.currentView;
@@ -789,6 +920,28 @@ class CraftLauncherApp {
       console.error('Erreur rendu contenu:', error);
       contentDiv.innerHTML = `<div style="padding: 20px; color: #ef4444;">Erreur: ${error.message}</div>`;
       this.pageLoader.hide();
+    } finally {
+      if (requestId === this.renderRequestId) {
+        this.isRenderingView = false;
+        // Réactiver les boutons de menu qui ont été désactivés visuellement
+        try {
+          document.querySelectorAll('.menu-item').forEach(btn => {
+            try {
+              const view = btn.getAttribute('data-view');
+              // Ne pas réactiver les boutons marqués comme permanent-disabled
+              if (btn.dataset && btn.dataset.permanentDisabled === '1') return;
+              // Ne pas réactiver le bouton correspondant à la vue courante (il restera désactivé par renderMainLayout)
+              if (view && String(view).toLowerCase() === String(this.currentView).toLowerCase()) return;
+              btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = '';
+            } catch(_) {}
+          });
+        } catch(_) {}
+        this.pageLoader.hide();
+        // Démarrer/arrêter l'auto-update des statistiques selon la vue affichée
+        try {
+          if (String(this.currentView).toLowerCase() === 'stats') this.startStatsAutoUpdate(); else this.stopStatsAutoUpdate();
+        } catch (_) {}
+      }
     }
   }
 renderMainLayout() {
@@ -831,11 +984,8 @@ renderMainLayout() {
               <button class="menu-item ${this.currentView === 'main' ? 'active' : ''}" data-view="main" ${this.currentView === 'main' ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                 <span class="menu-icon"><i class="bi bi-house-door"></i></span> Accueil
               </button>
-              <button class="menu-item ${this.currentView === 'friends' ? 'active' : ''}" data-view="friends" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <button class="menu-item ${this.currentView === 'friends' ? 'active' : ''}" data-view="friends" data-permanent-disabled="1" disabled style="opacity: 0.5; cursor: not-allowed;">
                 <span class="menu-icon"><i class="bi bi-people"></i></span> Amis
-              </button>
-              <button class="menu-item ${this.currentView === 'servers' ? 'active' : ''}" data-view="servers" ${this.currentView === 'servers' ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                <span class="menu-icon"><i class="bi bi-globe"></i></span> Serveurs
               </button>
               <button class="menu-item ${this.currentView === 'partners' ? 'active' : ''}" data-view="partners" ${this.currentView === 'partners' ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                 <span class="menu-icon"><i class="bi bi-star"></i></span> Partenaires
@@ -846,7 +996,7 @@ renderMainLayout() {
             </div>
 
             <div style="border-top: 1px solid rgba(99, 102, 241, 0.1); margin: 12px 0; padding-top: 12px;">
-              <button class="menu-item ${this.currentView === 'stats' ? 'active' : ''}" data-view="stats" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <button class="menu-item ${this.currentView === 'stats' ? 'active' : ''}" data-view="stats">
                 <span class="menu-icon"><i class="bi bi-bar-chart"></i></span> Statistiques
               </button>
               
@@ -1389,7 +1539,6 @@ renderMainLayout() {
       case 'screenshots': return this.renderScreenshotsView();
       case 'stats': return await this.renderStatsView();
       case 'news': return this.renderNewsView();
-      case 'servers': return this.renderServersView();
       case 'mods':
         const modsContent = await this.modsManager.render();
         setTimeout(() => this.modsManager.setupEvents(), 100);
@@ -1816,11 +1965,7 @@ renderMainLayout() {
             </div>
             <div class="stat-row">
               <span class="stat-label">Temps de jeu total</span>
-              <span class="stat-value">N/A</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">Parties jouées</span>
-              <span class="stat-value">N/A</span>
+                <span class="stat-value" id="total-playtime-value">N/A</span>
             </div>
           </div>
 
@@ -2473,50 +2618,6 @@ renderMainLayout() {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  renderServersView() {
-    return `
-      <div class="view-container" style="position: relative;">
-        <h1 class="view-title">Serveurs populaires</h1>
-        <p style="color: #64748b; margin-bottom: 30px;">Cliquez pour rejoindre directement un serveur</p>
-
-        <div class="servers-grid" style="position: relative; pointer-events: auto;">
-          ${this.popularServers.map(s => `
-            <div class="server-card" data-server-ip="${s.ip}">
-              <div class="server-icon" style="background-image: url('${s.icon}'); background-size: cover; background-position: center; background-repeat: no-repeat; width: 60px; height: 60px; border-radius: 12px; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); image-rendering: crisp-edges;"></div>
-              <div class="server-info">
-                <h3>${s.name}</h3>
-                <p class="server-ip">${s.ip}</p>
-                <p class="server-desc">${s.description}</p>
-                <div class="server-players">${icons.users} ${s.players} joueurs</div>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 10px; margin-left: auto;">
-                <button class="btn-join" data-join-server="${s.ip}" style="">${icons.zap} Rejoindre</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-
-        <div style="margin-top: 40px; pointer-events: auto; display: flex; gap: 15px; flex-wrap: wrap;">
-        </div>
-
-        <div style="margin-top: 60px; pointer-events: auto;">
-          <h2 style="font-size: 18px; margin-bottom: 15px; color: #e2e8f0;">Serveur personnalisé</h2>
-          <div class="custom-server-input" style="display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
-            <input type="text" class="input-field" id="custom-server-ip" placeholder="Ex: play.hypixel.net" style="width: 100%;">
-            <button class="btn-primary" id="join-custom-server" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">${icons.globe} Rejoindre</button>
-          </div>
-        </div>
-      </div>
-
-      <style>
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-15px); }
-        }
-      </style>
-    `;
   }
 
   renderPartnersView() {
@@ -3284,6 +3385,11 @@ renderMainLayout() {
         document.removeEventListener('click', this.viewChangeListener);
         this.viewChangeListener = null;
       }
+
+      if (this._statsResetHandler) {
+        try { document.removeEventListener('click', this._statsResetHandler); } catch(_) {}
+        this._statsResetHandler = null;
+      }
       
       // Marquer les thèmes comme non-attachés pour éviter les doublons
       document.querySelectorAll('.theme-option').forEach(btn => {
@@ -3321,34 +3427,82 @@ renderMainLayout() {
       }
     }, 0);
 
+    // Fallback global pour les images externes : utiliser une icône locale si hors-ligne
+    document.addEventListener('error', (ev) => {
+      try {
+        const t = ev.target;
+        if (!t) return;
+        if (t.tagName === 'IMG') {
+          // Ne pas boucler
+          if (t.dataset._localFallback) return;
+          t.dataset._localFallback = '1';
+          // Utiliser l'icône locale incluse dans l'app
+          t.src = 'assets/icon.png';
+        }
+      } catch (_) {}
+    }, true);
+
     // ✨ GESTIONNAIRE DE CHANGEMENT DE VUE (TODOS LES MENUS)
     this.viewChangeListener = (e) => {
       const button = e.target.closest('[data-view]');
       if (button && !button.disabled) {
-        const view = this.normalizeViewName(button.getAttribute('data-view'));
-        
-        // ✅ Ne pas recharger si on est déjà sur cette vue (avec String pour robustesse)
-        if (String(view).toLowerCase() === String(this.lastRenderedView).toLowerCase()) {
+        // Ignorer les clics rapides si une navigation est en cours
+        if (this.isRenderingView) {
+          console.debug('[Navigation] Ignorer clic rapide, rendu en cours');
           return;
         }
-        
-        // Cas spécial pour À propos (naviguer vers settings)
-        if (view === 'about') {
-          ipcRenderer.send('open-settings', { tab: 'about' });
-        }
-        // Cas spécial pour Licence (ouvrir GitHub)
-        else if (view === 'license') {
-          ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora-Client/blob/main/LICENSE');
-        }
-        // Cas spécial pour Paramètres
-        else if (view === 'settings') {
-          this.currentView = 'main';
-          this.render();
-          ipcRenderer.send('open-settings');
-        } else {
-          this.currentView = view;
-          this.render();
-        }
+        // Désactiver tous les onglets du menu pendant la navigation (peinture immédiate)
+        try {
+          document.querySelectorAll('.menu-item').forEach(btn => {
+            try { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'not-allowed'; } catch(_) {}
+          });
+        } catch(_) {}
+
+        // Lancer la navigation dans le prochain frame pour permettre au style d'être peint immédiatement
+        const targetView = this.normalizeViewName(button.getAttribute('data-view'));
+        // Double RAF + lecture de layout pour forcer le navigateur à peindre
+        requestAnimationFrame(() => {
+          try { void document.body.offsetWidth; } catch (_) {}
+          requestAnimationFrame(() => {
+            // ✅ Ne pas recharger si on est déjà sur cette vue (avec String pour robustesse)
+            if (String(targetView).toLowerCase() === String(this.lastRenderedView).toLowerCase()) {
+              // Restaurer l'état des boutons si on a simplement cliqué sur la vue courante
+              try {
+                document.querySelectorAll('.menu-item').forEach(btn => {
+                  try {
+                    const view = btn.getAttribute('data-view');
+                    if (btn.dataset && btn.dataset.permanentDisabled === '1') return;
+                    if (view && String(view).toLowerCase() === String(this.currentView).toLowerCase()) return;
+                    btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = '';
+                  } catch(_) {}
+                });
+              } catch(_) {}
+              return;
+            }
+
+            // Cas spécial pour À propos (naviguer vers settings)
+            if (targetView === 'about') {
+              ipcRenderer.send('open-settings', { tab: 'about' });
+              return;
+            }
+            // Cas spécial pour Licence (ouvrir GitHub)
+            if (targetView === 'license') {
+              ipcRenderer.send('open-external', 'https://github.com/pharos-off/Velkora-Client/blob/main/LICENSE');
+              return;
+            }
+            // Cas spécial pour Paramètres
+            if (targetView === 'settings') {
+              this.currentView = 'main';
+              this.render();
+              ipcRenderer.send('open-settings');
+              return;
+            }
+
+            // Navigation normale
+            this.currentView = targetView;
+            this.render();
+          });
+        });
       }
 
       // ✨ THÈME - MODE D'AFFICHAGE (pas de rendu complet, juste appliquer les styles)
@@ -3564,8 +3718,65 @@ renderMainLayout() {
         };
         launchBtn.innerHTML = `<span class="launch-icon">${icons.zap}</span><span class="launch-text">Lancer Minecraft</span><span class="launch-hint">Appuyez sur Ctrl+L</span>`;
       }
+
+    // Handler pour réinitialiser les statistiques (bouton dans la vue Stats)
+    try {
+      // Supprimer l'ancien handler s'il existe
+      if (this._statsResetHandler) {
+        try { document.removeEventListener('click', this._statsResetHandler); } catch(_) {}
+        this._statsResetHandler = null;
+      }
+
+      const self = this;
+      this._statsResetHandler = async function (e) {
+        try {
+          const btn = e && e.target && typeof e.target.closest === 'function' ? e.target.closest('#stats-reset-btn') : null;
+          if (!btn) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          const confirmed = await self.ui.showConfirm({
+            title: 'Réinitialiser les statistiques ?',
+            message: 'Cette action remettra à zéro le temps de jeu total localement.',
+            confirmLabel: 'Réinitialiser',
+            cancelLabel: 'Annuler',
+            type: 'error'
+          });
+          if (!confirmed) return;
+
+          try {
+            self.stopPlaytimeTracking();
+            self.setTotalPlaytimeMs(0);
+            try { localStorage.removeItem('velkora_game_start_ts'); } catch(_) {}
+            self.updatePlaytimeDisplay();
+            self.updateStatsView();
+            self.ui.showToast({ title: 'Statistiques réinitialisées', message: 'Le temps de jeu a été remis à zéro.', type: 'success' });
+          } catch (err) {
+            console.error('Erreur reset stats:', err);
+            self.ui.showToast({ title: 'Erreur', message: 'Impossible de réinitialiser les statistiques.', type: 'error' });
+          }
+        } catch (_) {}
+      };
+
+      document.addEventListener('click', this._statsResetHandler);
+    } catch (_) {}
       this.isLaunching = false;
+      try {
+        // Cumuler le temps de jeu enregistré
+        const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
+        if (start) {
+          const elapsed = Date.now() - start;
+          const prev = this.getTotalPlaytimeMs();
+          this.setTotalPlaytimeMs(prev + Math.max(0, elapsed));
+        }
+      } catch (e) {}
+      try { this.stopPlaytimeTracking(); } catch (e) {}
     });
+
+    // Démarrer l'auto-update des statistiques si on est sur la page stats
+    try {
+      if (this.currentView === 'stats') this.startStatsAutoUpdate(); else this.stopStatsAutoUpdate();
+    } catch (e) {}
 
 /*
     // ✅ BOUTON RADIO - DÉLÉGATION D'ÉVÉNEMENTS (fonctionne sur toutes les pages)
@@ -4545,6 +4756,13 @@ renderMainLayout() {
 
       // ✅ Le bouton restera grisé jusqu'à ce que le jeu ferme
       // Le listener 'game-closed' restaurera le bouton quand le jeu ferme
+        try {
+          // Enregistrer le timestamp de démarrage si non présent
+          const existing = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
+          if (!existing) localStorage.setItem('velkora_game_start_ts', String(Date.now()));
+        } catch (e) {}
+        // Démarrer le suivi pour mettre à jour l'affichage en direct
+        try { this.startPlaytimeTracking(); } catch (e) {}
 
     } catch (error) {
       if (launchBtn) {
@@ -4564,10 +4782,42 @@ renderMainLayout() {
 
 
   async renderStatsView() {
-    const html = await this.features.renderGameStats();
+    // Vue Stats native : afficher des informations réelles et dynamiques
     return `
       <div class="view-container" style="padding: 20px;">
-        ${html}
+        <div class="view-header" style="margin-bottom: 20px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div style="display:flex; flex-direction:column;">
+            <h2 style="margin:0;">Statistiques</h2>
+            <small style="color:#94a3b8;">Mises à jour en temps réel</small>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="stats-reset-btn" onclick="window.app && window.app.handleStatsReset && window.app.handleStatsReset()" style="background: transparent; border: 1px solid rgba(255,255,255,0.06); color:#f87171; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:600;">Réinitialiser</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+          <div style="background: rgba(15,23,42,0.6); padding:16px; border-radius:12px; border:1px solid rgba(99,102,241,0.08);">
+            <div style="font-size:12px; color:#94a3b8;">Temps de jeu total</div>
+            <div id="stats-total-playtime" style="font-size:18px; font-weight:700; color:#e2e8f0; margin-top:6px;">0s</div>
+          </div>
+
+          <div style="background: rgba(15,23,42,0.6); padding:16px; border-radius:12px; border:1px solid rgba(99,102,241,0.08);">
+            <div style="font-size:12px; color:#94a3b8;">Dernière connexion</div>
+            <div id="stats-last-played" style="font-size:16px; color:#e2e8f0; margin-top:6px;">Jamais</div>
+          </div>
+
+          <div style="background: rgba(15,23,42,0.6); padding:16px; border-radius:12px; border:1px solid rgba(99,102,241,0.08);">
+            <div style="font-size:12px; color:#94a3b8;">Jeu en cours</div>
+            <div id="stats-is-launching" style="font-size:16px; color:#e2e8f0; margin-top:6px;">Non</div>
+          </div>
+
+          <div style="background: rgba(15,23,42,0.6); padding:16px; border-radius:12px; border:1px solid rgba(99,102,241,0.08);">
+            <div style="font-size:12px; color:#94a3b8;">Statut réseau</div>
+            <div id="stats-network-status" style="font-size:16px; color:#e2e8f0; margin-top:6px;">inconnu</div>
+          </div>
+        </div>
+
+        <div style="margin-top:18px; color:#94a3b8; font-size:13px;">Les statistiques sont mises à jour automatiquement. Le temps de jeu est persisté localement et cumulé à chaque fermeture du jeu.</div>
       </div>
     `;
   }

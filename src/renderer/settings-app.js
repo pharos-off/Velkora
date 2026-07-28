@@ -169,7 +169,44 @@ async function loadAccountInfo() {
     
     if (accountInfo && accountInfo.username) {
       if (accountNameEl) accountNameEl.textContent = accountInfo.username;
-      if (accountEmailEl) accountEmailEl.textContent = accountInfo.id || accountInfo.uuid || 'N/A';
+        const fullId = accountInfo.id || accountInfo.uuid || 'N/A';
+        if (accountEmailEl) {
+          // Masquer l'ID par défaut (montrer quelques caractères)
+          const masked = (typeof fullId === 'string' && fullId.length > 8)
+            ? `${fullId.slice(0,6)}...${fullId.slice(-4)}`
+            : fullId;
+          accountEmailEl.textContent = masked;
+          accountEmailEl.dataset.fullId = fullId;
+          accountEmailEl.dataset.hidden = '1';
+        }
+        // Setup toggle button pour afficher/cacher l'ID
+        const toggleBtn = document.getElementById('toggle-account-id-btn');
+        if (toggleBtn) {
+          // Initial overlay state
+          const overlay = document.getElementById('id-overlay');
+          if (overlay) overlay.style.display = 'block';
+          toggleBtn.addEventListener('click', () => {
+            try {
+              const el = document.getElementById('account-email');
+              const ov = document.getElementById('id-overlay');
+              if (!el) return;
+              const isHidden = el.dataset.hidden === '1';
+              if (isHidden) {
+                el.textContent = el.dataset.fullId || 'N/A';
+                el.dataset.hidden = '0';
+                if (ov) ov.style.display = 'none';
+                toggleBtn.textContent = '✖';
+              } else {
+                const fid = el.dataset.fullId || '';
+                const masked = (fid && fid.length > 8) ? `${fid.slice(0,6)}...${fid.slice(-4)}` : fid || '';
+                el.textContent = masked;
+                el.dataset.hidden = '1';
+                if (ov) ov.style.display = 'block';
+                toggleBtn.textContent = '👁';
+              }
+            } catch (err) { console.warn('toggle id error', err); }
+          });
+        }
       if (accountStatusEl) accountStatusEl.innerHTML = '<span style="color: #10b981;">En ligne</span>';
     } else {
       if (accountStatusEl) accountStatusEl.innerHTML = '<span style="color: #ef4444;">Pas connecté</span>';
@@ -705,16 +742,16 @@ function renderSettings() {
         </div>
         <div class="settings-menu">
           <button class="menu-category active" data-tab="game">
-            <span class="menu-icon"><i class="bi bi-controller"></i></span><span class="menu-text">Game</span>
+            <span class="menu-icon"><i class="bi bi-controller"></i></span><span class="menu-text">Jeu</span>
           </button>
           <button class="menu-category" data-tab="general">
-            <span class="menu-icon"><i class="bi bi-gear"></i></span><span class="menu-text">General</span>
+            <span class="menu-icon"><i class="bi bi-gear"></i></span><span class="menu-text">Général</span>
           </button>
           <button class="menu-category" data-tab="account">
-            <span class="menu-icon"><i class="bi bi-person-circle"></i></span><span class="menu-text">Account</span>
+            <span class="menu-icon"><i class="bi bi-person-circle"></i></span><span class="menu-text">Compte</span>
           </button>
           <button class="menu-category" data-tab="storage">
-            <span class="menu-icon"><i class="bi bi-hdd"></i></span><span class="menu-text">Storage</span>
+            <span class="menu-icon"><i class="bi bi-hdd"></i></span><span class="menu-text">Stockage</span>
           </button>
           <button class="menu-category" data-tab="notifications">
             <span class="menu-icon"><i class="bi bi-bell"></i></span><span class="menu-text">Notifications</span>
@@ -913,7 +950,11 @@ function renderSettings() {
             </div>
             <div class="setting-item">
               <label>ID Utilisateur</label>
-              <p id="account-email" style="color: #d1d5db; padding: 10px 0; font-weight: 500; font-family: 'Courier New', monospace; word-break: break-all;">Chargement...</p>
+              <div style="position: relative; display: flex; align-items: center; gap: 8px;">
+                <p id="account-email" style="color: #d1d5db; padding: 10px 0; font-weight: 500; font-family: 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin:0; width:100%;">Chargement...</p>
+                <div id="id-overlay" style="position: absolute; left: 0; right: 36px; top: 0; bottom: 0; background: rgba(0,0,0,0.35); backdrop-filter: blur(4px); pointer-events: none; border-radius: 4px;"></div>
+                <button id="toggle-account-id-btn" class="btn-secondary" style="padding:4px 6px; font-size:12px; width:28px; height:28px;">👁</button>
+              </div>
             </div>
             <div class="setting-item">
               <label>Statut</label>
@@ -1125,7 +1166,7 @@ function renderSettings() {
             <p style="color: #d1d5db; line-height: 1.8; margin-bottom: 20px;">
               <strong style="color: #6366f1; font-size: 16px;">Version:</strong> ${LauncherVersion.getVersionString()}<br>
               <strong style="color: #6366f1;">Developpeur:</strong> Pharos<br>
-              <strong style="color: #6366f1;">Licence:</strong> VMv1<br>
+              <strong style="color: #6366f1;">Licence:</strong> VCv1<br>
             </p>
           </div>
 

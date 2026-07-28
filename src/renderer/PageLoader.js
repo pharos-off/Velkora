@@ -7,6 +7,8 @@ class PageLoader {
   constructor() {
     this.isLoading = false;
     this.loadingTimeout = null;
+    this.forceHideTimeout = null;
+    this.progressFrameId = null;
     this.minLoadingDuration = 800; // 800ms d'affichage minimum du loading
     this.loadStartTime = 0;
     this.pageTransitionDelay = 500; // 500ms de délai de transition entre les pages
@@ -46,7 +48,14 @@ class PageLoader {
    */
   show() {
     const loadingScreen = this.getLoadingScreen();
-    if (!loadingScreen || this.isLoading) return;
+    if (!loadingScreen) return;
+
+    clearTimeout(this.loadingTimeout);
+    clearTimeout(this.forceHideTimeout);
+    if (typeof cancelAnimationFrame === 'function' && this.progressFrameId) {
+      cancelAnimationFrame(this.progressFrameId);
+      this.progressFrameId = null;
+    }
     
     // Vérifier si le loading screen est déjà caché (display: none)
     if (loadingScreen.style.display === 'none') {
@@ -64,7 +73,7 @@ class PageLoader {
     
     // Démarrer l'animation de la barre de progression
     this.animateProgress();
-    
+    this.scheduleForceHide();
   }
 
   /**
@@ -80,13 +89,35 @@ class PageLoader {
     
     // Attendre le délai minimum avant de masquer
     clearTimeout(this.loadingTimeout);
+    clearTimeout(this.forceHideTimeout);
     this.loadingTimeout = setTimeout(() => {
-      const ls = this.getLoadingScreen();
-      if (ls) {
-        ls.classList.add('hidden');
-      }
-      this.isLoading = false;
+      this.finishHide();
     }, remainingTime);
+  }
+
+  finishHide() {
+    const loadingScreen = this.getLoadingScreen();
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+      loadingScreen.style.display = 'none';
+    }
+
+    this.isLoading = false;
+    clearTimeout(this.loadingTimeout);
+    clearTimeout(this.forceHideTimeout);
+    if (typeof cancelAnimationFrame === 'function' && this.progressFrameId) {
+      cancelAnimationFrame(this.progressFrameId);
+      this.progressFrameId = null;
+    }
+  }
+
+  scheduleForceHide() {
+    clearTimeout(this.forceHideTimeout);
+    this.forceHideTimeout = setTimeout(() => {
+      if (this.isLoading) {
+        this.finishHide();
+      }
+    }, 5000);
   }
 
   /**
@@ -137,7 +168,7 @@ class PageLoader {
       }
       
       if (t < 1) {
-        requestAnimationFrame(animate);
+        this.progressFrameId = requestAnimationFrame(animate);
       } else {
         // Finir à 90%
         if (!this.isLoading) {
@@ -148,7 +179,7 @@ class PageLoader {
       }
     };
     
-    requestAnimationFrame(animate);
+    this.progressFrameId = requestAnimationFrame(animate);
   }
 
   /**
@@ -312,12 +343,18 @@ class PageLoader {
    * ✅ ANNULER LE LOADING EN COURS
    */
   cancel() {
-    clearTimeout(this.loadingTimeout);
-    const loadingScreen = this.getLoadingScreen();
-    if (loadingScreen) {
-      loadingScreen.classList.add('hidden');
+    try {
+      clearTimeout(this.loadingTimeout);
+      clearTimeout(this.forceHideTimeout);
+      if (typeof cancelAnimationFrame === 'function' && this.progressFrameId) {
+        cancelAnimationFrame(this.progressFrameId);
+        this.progressFrameId = null;
+      }
+      this.finishHide();
+    } catch (err) {
+      console.warn('[PageLoader] cancel error', err);
+      this.isLoading = false;
     }
-    this.isLoading = false;
   }
 }
 

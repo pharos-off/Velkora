@@ -10,6 +10,7 @@ const INVOKE_ALLOWED = [
   'save-discord-settings','open-minecraft-folder','reset-discord-settings','get-required-java-version','get-detected-java-path',
   'update-profile-version','save-settings','logout-account','ping-server','get-account-info','launch-game','get-mods-folder','launch-minecraft',
   'import-mod','download-modrinth-mod','download-modrinth-resourcepack','get-shaders-folder','get-installed-shaders','download-modrinth-shader',
+  'update-profile-loader',
   'delete-mod','delete-resourcepack','delete-shader','login-microsoft','check-online','get-versions','get-game-directory','get-installed-versions'
 ];
 

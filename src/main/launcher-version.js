@@ -6,10 +6,10 @@
 const LauncherVersion = {
   // Informations principales
   name: 'Velkora Client',
-  version: '4.4.3', // Format: MAJOR.MINOR.PATCH
-  versionName: '4.4.3', // Format: Nom de la version
-  build: '20260708', // Format: YYYYMMDD
-  releaseDate: '2026-07-08', // Format: YYYY-MM-DD
+  version: '4.4.4', // Format: MAJOR.MINOR.PATCH
+  versionName: '4.4.4', // Format: Nom de la version
+  build: '20260728', // Format: YYYYMMDD
+  releaseDate: '2026-07-28', // Format: YYYY-MM-DD
   channel: 'stable', // stable, beta, dev
   
   // Informations du développeur
