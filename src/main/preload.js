@@ -11,7 +11,11 @@ const INVOKE_ALLOWED = [
   'update-profile-version','save-settings','logout-account','ping-server','get-account-info','launch-game','get-mods-folder','launch-minecraft',
   'import-mod','download-modrinth-mod','download-modrinth-resourcepack','get-shaders-folder','get-installed-shaders','download-modrinth-shader',
   'update-profile-loader','check-updates','install-update',
-  'delete-mod','delete-resourcepack','delete-shader','login-microsoft','check-online','get-versions','get-game-directory','get-installed-versions'
+  'delete-mod','delete-resourcepack','delete-shader','login-microsoft','check-online','get-versions','get-game-directory','get-installed-versions',
+  'rename-profile','get-game-sessions','backup-init','backup-create','backup-restore','backup-list','backup-delete','backup-get-stats',
+  'jvm-optimize','jvm-get-report','list-resource-packs','install-resource-pack','delete-resource-pack','monitor-start','monitor-stop','monitor-get-stats',
+  'get-discord-status','reconnect-discord-rpc','export-profile','import-profile','get-diagnostics','install-java','import-modpack','export-modpack',
+  'validate-profile-compatibility','get-favorite-servers','save-favorite-server','remove-favorite-server'
 ];
 
 const SEND_ALLOWED = [
@@ -22,9 +26,9 @@ const SEND_ALLOWED = [
 
 const ON_ALLOWED = [
   'add-log','settings-updated','set-logs','play-notification-sound','game-closed','launch-progress','launch-error',
-  'navigate-to-tab','logout-from-settings','return-to-login','theme-updated','discord-status-changed','discord-connected',
+  'navigate-to-tab','logout-from-settings','return-to-login','theme-updated','discord-status-changed','discord-connected','monitor-update',
   'discord-disconnected','discord-connecting','discord-error','discord-activity-updated','update-progress',
-  'keyboard-shortcuts','keyboard-commands','keyboard-settings','keyboard-home','keyboard-launch','clear-logs','network-status'
+  'keyboard-shortcuts','keyboard-commands','keyboard-settings','keyboard-home','keyboard-launch','clear-logs','network-status','java-install-progress'
 ];
 
 const listeners = new Map();

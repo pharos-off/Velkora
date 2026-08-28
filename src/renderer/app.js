@@ -2622,13 +2622,6 @@ renderMainLayout() {
 
   renderPartnersView() {
     const partners = [
-      { 
-        name: 'LunaVerse',
-        logo: icons.moon,
-        description: 'Un serveur communautaire rassemblant plusieurs projets !',
-        website: '',
-        joinUrl: ''
-      }
     ];
 
     return `
@@ -3437,7 +3430,7 @@ renderMainLayout() {
           if (t.dataset._localFallback) return;
           t.dataset._localFallback = '1';
           // Utiliser l'icône locale incluse dans l'app
-          t.src = 'assets/icon.png';
+          t.src = pathToFileURL(resolveAssetPath('icon.ico')).toString();
         }
       } catch (_) {}
     }, true);

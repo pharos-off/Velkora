@@ -14,8 +14,30 @@ class BackupManager extends EventEmitter {
     this.savesDir = path.join(gameDirectory, 'saves');
     this.backupsDir = path.join(gameDirectory, 'backups');
     this.configDir = path.join(gameDirectory, 'launcher_backups_config.json');
+    this.autoBackupTimer = null;
     this.ensureDirectories();
     this.loadConfig();
+  }
+
+  startAutoBackup() {
+    this.stopAutoBackup();
+    if (!this.config.autoBackup) return;
+    const interval = Math.max(60000, Number(this.config.backupInterval) || 3600000);
+    this.autoBackupTimer = setInterval(async () => {
+      try {
+        const worlds = fs.readdirSync(this.savesDir, { withFileTypes: true })
+          .filter(entry => entry.isDirectory())
+          .map(entry => entry.name);
+        for (const world of worlds) await this.backupWorld(world);
+      } catch (error) {
+        console.warn('[Backup] Erreur backup automatique:', error.message);
+      }
+    }, interval);
+  }
+
+  stopAutoBackup() {
+    if (this.autoBackupTimer) clearInterval(this.autoBackupTimer);
+    this.autoBackupTimer = null;
   }
 
   ensureDirectories() {
@@ -24,6 +46,21 @@ class BackupManager extends EventEmitter {
         fs.mkdirSync(dir, { recursive: true });
       }
     });
+  }
+
+  isSafeName(value) {
+    const name = String(value || '');
+    return Boolean(name) && name !== '.' && name !== '..' && path.basename(name) === name;
+  }
+
+  resolveInside(directory, name) {
+    if (!this.isSafeName(name)) throw new Error('Nom de fichier invalide');
+    const base = path.resolve(directory);
+    const target = path.resolve(base, name);
+    if (target !== base && !target.startsWith(`${base}${path.sep}`)) {
+      throw new Error('Chemin de backup invalide');
+    }
+    return target;
   }
 
   /**
@@ -72,7 +109,7 @@ class BackupManager extends EventEmitter {
   async backupWorld(worldName) {
     return new Promise((resolve, reject) => {
       try {
-        const worldPath = path.join(this.savesDir, worldName);
+        const worldPath = this.resolveInside(this.savesDir, worldName);
 
         if (!fs.existsSync(worldPath)) {
           return reject(new Error(`Monde "${worldName}" non trouvé`));
@@ -80,7 +117,7 @@ class BackupManager extends EventEmitter {
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupName = `${worldName}_${timestamp}.zip`;
-        const backupPath = path.join(this.backupsDir, backupName);
+        const backupPath = this.resolveInside(this.backupsDir, backupName);
 
         const zip = new AdmZip();
         const files = this.getFilesRecursive(worldPath);
@@ -134,13 +171,13 @@ class BackupManager extends EventEmitter {
   async restoreBackup(backupName, worldName) {
     return new Promise((resolve, reject) => {
       try {
-        const backupPath = path.join(this.backupsDir, backupName);
+        const backupPath = this.resolveInside(this.backupsDir, backupName);
 
         if (!fs.existsSync(backupPath)) {
           return reject(new Error(`Backup "${backupName}" non trouvé`));
         }
 
-        const worldPath = path.join(this.savesDir, worldName);
+        const worldPath = this.resolveInside(this.savesDir, worldName);
 
         // ✅ Créer un backup avant de restaurer
         if (fs.existsSync(worldPath)) {
@@ -151,6 +188,11 @@ class BackupManager extends EventEmitter {
         // ✅ Restaurer
         fs.mkdirSync(worldPath, { recursive: true });
         const zip = new AdmZip(backupPath);
+        for (const entry of zip.getEntries()) {
+          if (entry.entryName.split(/[\\/]/).some(part => part === '..') || path.isAbsolute(entry.entryName)) {
+            throw new Error('Archive de backup invalide');
+          }
+        }
         zip.extractAllTo(worldPath, true);
 
         console.log(`[Backup] Backup restauré: ${backupName}`);
@@ -195,7 +237,7 @@ class BackupManager extends EventEmitter {
    */
   deleteBackup(backupName) {
     try {
-      const backupPath = path.join(this.backupsDir, backupName);
+      const backupPath = this.resolveInside(this.backupsDir, backupName);
 
       if (fs.existsSync(backupPath)) {
         fs.unlinkSync(backupPath);

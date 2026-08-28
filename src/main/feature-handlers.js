@@ -10,6 +10,9 @@ const { ipcMain } = require('electron');
 
 module.exports = function registerNewFeatureHandlers(electronApp, store) {
   const BackupManager = require('./backup-manager');
+  const JVMOptimizer = require('./jvm-optimizer');
+  const ResourcePackManager = require('./resource-pack-manager');
+  const GameMonitor = require('./game-monitor');
   const path = require('path');
   const os = require('os');
 

@@ -937,6 +937,7 @@ function renderSettings() {
               <div style="display: flex; gap: 8px;">
                 <input type="text" id="java-path-input" class="input-field" placeholder="exemple: C:\\Program Files\\Java\\jdk-25.0.1\\bin\\javaw.exe" style="flex: 1;">
                 <button id="detect-java-btn" class="dir-browse-btn" style="min-width: 100px;"><span style="display: inline-flex; width: 16px; height: 16px;">${lucideIcons.magnifyingGlass}</span> Détecter</button>
+                <button id="install-java-btn" class="dir-browse-btn" style="min-width: 120px;">Installer Java</button>
               </div>
               <p id="java-detected-path" class="help-text" style="margin-top: 8px; color: #cbd5e1;">Cliquez sur &quot;Détecter&quot; pour chercher Java automatiquement</p>
               <p class="help-text">Laisse vide pour utiliser la configuration par défaut</p>
@@ -971,6 +972,37 @@ function renderSettings() {
               </label>
               <p class="help-text">Ouvre une fenêtre dédiée aux logs de lancement</p>
             </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Sauvegardes des mondes</h3>
+            <div class="setting-item">
+              <label for="backup-world-name">Nom du monde</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <input type="text" id="backup-world-name" class="input-field" placeholder="Mon monde" style="flex: 1; min-width: 180px;">
+                <button id="create-backup-btn" class="btn-secondary">Créer une sauvegarde</button>
+                <button id="list-backups-btn" class="btn-secondary">Lister</button>
+              </div>
+              <p id="backup-status" class="help-text">Les sauvegardes sont stockées dans le dossier Minecraft.</p>
+              <div id="backup-list" style="margin-top: 10px; color: #d1d5db;"></div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Modpacks</h3>
+            <p class="help-text">Importez ou exportez les mods, shaders et resource packs du profil principal.</p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="import-modpack-btn" class="btn-secondary">Importer un modpack ZIP</button>
+              <button id="export-modpack-btn" class="btn-secondary">Exporter le modpack</button>
+            </div>
+            <p id="modpack-status" class="help-text"></p>
+          </div>
+
+          <div class="settings-card">
+            <h3>Diagnostic</h3>
+            <p class="help-text">Génère un rapport système pour faciliter le dépannage.</p>
+            <button id="diagnostics-btn" class="btn-secondary">Générer le rapport</button>
+            <pre id="diagnostics-output" style="display: none; margin-top: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; color: #d1d5db;"></pre>
           </div>
 
           <div class="button-group">
@@ -1313,6 +1345,15 @@ function renderSettings() {
               ${LauncherVersion.getName()} est un launcher Minecraft complet et moderne offrant une experience utilisateur exceptionnelle. 
               Le projet combine la puissance d'Electron avec Node.js pour fournir une application de bureau performante et intuitive.
             </p>
+          </div>
+
+          <div class="settings-card">
+            <h3>Profils</h3>
+            <p style="color: #d1d5db; line-height: 1.8;">Partagez la configuration du profil principal avec un fichier Velkora.</p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="export-profile-btn" class="btn-secondary">Exporter le profil</button>
+              <button id="import-profile-btn" class="btn-secondary">Importer un profil</button>
+            </div>
           </div>
 
           <div class="settings-card">
@@ -1938,6 +1979,74 @@ function renderSettings() {
       }
     });
   }
+
+  const backupStatus = document.getElementById('backup-status');
+  const backupList = document.getElementById('backup-list');
+  const refreshBackups = async () => {
+    const result = await ipcRenderer.invoke('backup-list');
+    if (!backupList) return;
+    backupList.textContent = result.success && result.backups.length
+      ? result.backups.map(backup => `${backup.world} - ${backup.date} - ${backup.size}`).join('\n')
+      : 'Aucune sauvegarde trouvée.';
+  };
+  document.getElementById('create-backup-btn')?.addEventListener('click', async () => {
+
+  document.getElementById('install-java-btn')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const requiredResult = await ipcRenderer.invoke('get-required-java-version', versionSelect?.value || '1.21.11');
+    button.disabled = true;
+    button.textContent = 'Installation...';
+    try {
+      const result = await ipcRenderer.invoke('install-java', requiredResult.requiredVersion);
+      if (result.success) {
+        document.getElementById('java-path-input').value = result.path;
+        updateJavaStatusMessage(`Java ${result.version} installé`, '#10b981');
+      } else {
+        updateJavaStatusMessage(result.error, '#ef4444');
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Installer Java';
+    }
+  });
+
+  const modpackStatus = document.getElementById('modpack-status');
+  document.getElementById('import-modpack-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('import-modpack', 1);
+    if (modpackStatus) modpackStatus.textContent = result.success ? `Modpack importé : ${result.name}` : `Erreur : ${result.error || 'annulé'}`;
+  });
+  document.getElementById('export-modpack-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('export-modpack', 1);
+    if (modpackStatus) modpackStatus.textContent = result.success ? 'Modpack exporté.' : `Erreur : ${result.error || 'annulé'}`;
+  });
+    const worldName = document.getElementById('backup-world-name')?.value.trim();
+    if (!worldName) {
+      if (backupStatus) backupStatus.textContent = 'Indiquez le nom du monde.';
+      return;
+    }
+    const result = await ipcRenderer.invoke('backup-create', worldName);
+    if (backupStatus) backupStatus.textContent = result.success ? 'Sauvegarde créée.' : `Erreur : ${result.error}`;
+    if (result.success) refreshBackups();
+  });
+  document.getElementById('list-backups-btn')?.addEventListener('click', refreshBackups);
+
+  document.getElementById('diagnostics-btn')?.addEventListener('click', async () => {
+    const output = document.getElementById('diagnostics-output');
+    const result = await ipcRenderer.invoke('get-diagnostics');
+    if (output) {
+      output.style.display = 'block';
+      output.textContent = result.success ? JSON.stringify(result, null, 2) : `Erreur : ${result.error}`;
+    }
+  });
+
+  document.getElementById('export-profile-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('export-profile', 1);
+    alert(result.success ? 'Profil exporté.' : (result.canceled ? 'Export annulé.' : `Erreur : ${result.error}`));
+  });
+  document.getElementById('import-profile-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('import-profile');
+    alert(result.success ? `Profil importé : ${result.profile.name}` : (result.canceled ? 'Import annulé.' : `Erreur : ${result.error}`));
+  });
 
   // ✅ LISTEN FOR UPDATE PROGRESS
   ipcRenderer.on('update-progress', (event, progress) => {

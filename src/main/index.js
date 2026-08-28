@@ -14,6 +14,9 @@ const NetworkManager = require('./network-manager');
 const CacheManager = require('./cache-manager');
 const BackupManager = require('./backup-manager');
 const registerNewFeatureHandlers = require('./feature-handlers');
+const ProfileManager = require('./profile-manager');
+const ModpackManager = require('./modpack-manager');
+const JavaManager = require('./java-manager');
 let _msAuthInstance = null;
 
 const si = require('systeminformation');
@@ -123,8 +126,8 @@ async function waitForInternet(timeoutMs = 15000, intervalMs = 2500) {
   return false;
 }
 
-const LAUNCHER_VERSION = '4.4.4';
-const LAUNCHER_BUILD = '20260728';
+const LAUNCHER_VERSION = '4.5.0';
+const LAUNCHER_BUILD = '20260828';
 const LAUNCHER_NAME = 'Velkora Client';
 function getAssetPath(...segments) {
   if (app.isPackaged) {
@@ -316,6 +319,23 @@ const originalSpawn = childProcess.spawn;
 
 const store = new Store();
 console.log('📋 [INIT] Electron Store path:', store.path);
+const rawStoreGet = store.get.bind(store);
+const rawStoreSet = store.set.bind(store);
+const rawStoreDelete = store.delete.bind(store);
+store.get = (key, defaultValue) => {
+  if (key !== 'authData') return rawStoreGet(key, defaultValue);
+  const stored = rawStoreGet(key, defaultValue);
+  if (!stored || !stored.iv || !stored.data || !stored.authTag) return stored;
+  return SecurityManager.decrypt(stored);
+};
+store.set = (key, value) => {
+  if (key === 'authData') return SecurityManager.storeAuthData(value);
+  return rawStoreSet(key, value);
+};
+store.delete = (key) => {
+  if (key === 'authData') return SecurityManager.clearAuthData();
+  return rawStoreDelete(key);
+};
 let mainWindow;
 let loadingWindow = null;
 let settingsWindow = null;
@@ -333,6 +353,9 @@ let jvmOptimizer = null;
 let resourcePackManager = null;
 let gameMonitor = null;
 let backupManager = null;
+let profileManager = null;
+let javaManager = null;
+const modpackManager = new ModpackManager();
 // Ignorer certaines erreurs bénignes lors de l’extinction (race Discord RPC)
 process.on('uncaughtException', (err) => {
   try {
@@ -444,6 +467,9 @@ function createWindow() {
       nodeIntegration: true,
       enableRemoteModule: false,
       sandbox: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
       preload: path.join(__dirname, 'preload.js')
     }
   };
@@ -469,6 +495,16 @@ function createWindow() {
   }
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\/(?:www\.)?(?:github\.com|discord\.gg|discord\.com|minecraft\.net)\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file://')) event.preventDefault();
+  });
 
   mainWindow.webContents.on('did-finish-load', () => {
     try {
@@ -1592,6 +1628,7 @@ app.on('before-quit', async () => {
   try {
     // ✅ Arrêter le timer de renouvellement du token
     stopTokenRefreshTimer();
+    if (backupManager) backupManager.stopAutoBackup();
     
     if (discordRPC && !_discordCleaned) {
       _discordCleaned = true;
@@ -1708,6 +1745,10 @@ app.whenReady().then(async () => {
   // ✅ INITIALISER LES NOUVEAUX HANDLERS DE FONCTIONNALITÉS
   try {
     registerNewFeatureHandlers(app, store);
+      backupManager = new BackupManager(getGameDir());
+        profileManager = new ProfileManager(getGameDir());
+        javaManager = new JavaManager(app.getPath('userData'));
+      backupManager.startAutoBackup();
     console.log('✅ Feature handlers initialized (JVM, ResourcePacks, Monitor, Backup)');
   } catch (err) {
     console.warn('⚠️ Feature handlers initialization failed:', err.message);
@@ -2287,28 +2328,32 @@ ipcMain.handle('reset-notification-settings', async () => {
   }
 });
 
-// ✅ HISTORIQUE DE JEU - ENREGISTRER UNE PARTIE
-ipcMain.handle('log-game-session', async (event, sessionData) => {
+function recordGameSession(sessionData) {
   const sessions = store.get('gameSessions', []);
-  
+  const startedAt = new Date(sessionData.startTime);
+  if (Number.isNaN(startedAt.getTime())) return { success: false, error: 'Date de session invalide' };
+
   const newSession = {
     id: Date.now(),
-    version: sessionData.version,
+    version: sessionData.version || 'Inconnue',
     server: sessionData.server || 'Solo',
     username: sessionData.username,
-    startTime: new Date(sessionData.startTime).toISOString(),
+    startTime: startedAt.toISOString(),
     endTime: new Date().toISOString(),
-    durationMinutes: Math.round((new Date() - new Date(sessionData.startTime)) / 60000)
+    durationMinutes: Math.max(0, Math.round((Date.now() - startedAt.getTime()) / 60000)),
+    won: Boolean(sessionData.won)
   };
-  
+
   sessions.unshift(newSession);
-  // Garder seulement les 100 dernières sessions
   if (sessions.length > 100) sessions.pop();
-  
   store.set('gameSessions', sessions);
   console.log(`✅ Session registered: ${newSession.durationMinutes}min`);
-  
   return { success: true };
+}
+
+// ✅ HISTORIQUE DE JEU - ENREGISTRER UNE PARTIE
+ipcMain.handle('log-game-session', async (event, sessionData) => {
+  return recordGameSession(sessionData || {});
 });
 
 // ✅ OBTENIR L'HISTORIQUE DE JEU
@@ -2355,7 +2400,7 @@ ipcMain.handle('get-game-stats', async () => {
   let bestStreak = 0;
   let tempStreak = 0;
   
-  for (const session of sessions.reverse()) {
+  for (const session of [...sessions].reverse()) {
     if (session.won) {
       tempStreak++;
       currentStreak = tempStreak;
@@ -2403,7 +2448,7 @@ ipcMain.handle('get-game-stats', async () => {
     wins: wins,
     currentStreak: currentStreak,
     bestStreak: bestStreak,
-    lastPlayed: sessions[sessions.length - 1]?.startTime || null,
+    lastPlayed: sessions[0]?.startTime || null,
     longestSession: longestSessionFormatted,
     favoriteServer,
     favoriteVersion,
@@ -2479,9 +2524,11 @@ function inferProfileLoader(profile = {}) {
 }
 
 function normalizeProfiles(profiles = []) {
+  if (!profileManager) profileManager = new ProfileManager(getGameDir());
   return profiles.map(profile => ({
     ...profile,
-    loader: profile.loader || inferProfileLoader(profile)
+    loader: profile.loader || inferProfileLoader(profile),
+    gameDirectory: profileManager.getDirectory(profile)
   }));
 }
 
@@ -2642,6 +2689,9 @@ ipcMain.handle('create-profile', async (event, profileData) => {
     lastPlayed: null,
     createdAt: new Date().toISOString()
   };
+  if (!profileManager) profileManager = new ProfileManager(getGameDir());
+  newProfile.gameDirectory = profileManager.getDirectory(newProfile);
+  profileManager.ensureDirectories(newProfile);
   
   profiles.push(newProfile);
   store.set('profiles', profiles);
@@ -2681,6 +2731,9 @@ ipcMain.handle('duplicate-profile', async (event, profileId) => {
     name: `${profileToDuplicate.name} (copie)`,
     createdAt: new Date().toISOString()
   };
+  if (!profileManager) profileManager = new ProfileManager(getGameDir());
+  duplicated.gameDirectory = profileManager.getDirectory(duplicated);
+  profileManager.ensureDirectories(duplicated);
   
   profiles.push(duplicated);
   store.set('profiles', profiles);
@@ -2698,11 +2751,87 @@ ipcMain.handle('rename-profile', async (event, profileId, newName) => {
     return { success: false, error: 'Profil non trouvé' };
   }
   
-  profile.name = newName;
+  const normalizedName = String(newName || '').trim();
+  if (!normalizedName || normalizedName.length > 40) {
+    return { success: false, error: 'Nom de profil invalide' };
+  }
+  profile.name = normalizedName;
   store.set('profiles', profiles);
   console.log(`✅ Profile renamed: ${newName}`);
   
   return { success: true, profile };
+});
+
+ipcMain.handle('export-profile', async (event, profileId) => {
+  try {
+    const profile = store.get('profiles', []).find(item => item.id === parseInt(profileId, 10));
+    if (!profile) return { success: false, error: 'Profil non trouvé' };
+    const result = await dialog.showSaveDialog({
+      title: 'Exporter le profil',
+      defaultPath: `${profile.name.replace(/[^a-z0-9_-]/gi, '_')}.velkora.json`,
+      filters: [{ name: 'Profil Velkora', extensions: ['json'] }]
+    });
+    if (result.canceled) return { success: false, canceled: true };
+    fs.writeFileSync(result.filePath, JSON.stringify({ format: 1, profile }, null, 2), 'utf8');
+    return { success: true, path: result.filePath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('import-profile', async () => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Importer un profil',
+      properties: ['openFile'],
+      filters: [{ name: 'Profil Velkora', extensions: ['json'] }]
+    });
+    if (result.canceled) return { success: false, canceled: true };
+    const imported = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
+    const source = imported.profile || imported;
+    if (!source || typeof source.name !== 'string' || typeof source.version !== 'string') {
+      return { success: false, error: 'Fichier de profil invalide' };
+    }
+    const profiles = store.get('profiles', []);
+    const newId = profiles.length ? Math.max(...profiles.map(profile => profile.id)) + 1 : 1;
+    const profile = {
+      id: newId,
+      name: source.name.trim().slice(0, 40) || `Profil ${newId}`,
+      version: source.version,
+      loader: source.loader || 'vanilla',
+      lastPlayed: null,
+      createdAt: new Date().toISOString()
+    };
+    profiles.push(profile);
+    store.set('profiles', profiles);
+    return { success: true, profile };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-diagnostics', async () => {
+  try {
+    const [cpu, mem, osInfo, disk] = await Promise.all([
+      si.cpu(),
+      si.mem(),
+      si.osInfo(),
+      si.fsSize()
+    ]);
+    return {
+      success: true,
+      generatedAt: new Date().toISOString(),
+      appVersion: LauncherVersion.version,
+      platform: process.platform,
+      arch: process.arch,
+      cpu: { brand: cpu.brand, cores: cpu.cores, speed: cpu.speed },
+      memory: { total: mem.total, free: mem.available },
+      os: { platform: osInfo.platform, distro: osInfo.distro, release: osInfo.release },
+      disks: disk.map(item => ({ mount: item.mount, size: item.size, used: item.used, available: item.available }))
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 // ✅ MODIFIER JUSTE LA VERSION DU PROFIL
@@ -2834,6 +2963,85 @@ ipcMain.handle('get-detected-java-path', async (event, javaVersion) => {
   }
 });
 
+ipcMain.handle('install-java', async (event, javaVersion) => {
+  try {
+    if (!javaManager) javaManager = new JavaManager(app.getPath('userData'));
+    const result = await javaManager.install(javaVersion, progress => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('java-install-progress', progress);
+    });
+    const settings = store.get('settings', {});
+    settings.javaPath = result.path;
+    store.set('settings', settings);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('import-modpack', async (event, profileId) => {
+  try {
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Modpack ZIP', extensions: ['zip'] }] });
+    if (result.canceled) return { success: false, canceled: true };
+    const profile = store.get('profiles', []).find(item => item.id === parseInt(profileId, 10)) || store.get('profiles', [])[0];
+    if (!profileManager) profileManager = new ProfileManager(getGameDir());
+    const directory = profileManager.ensureDirectories(profile || { id: 1 });
+    return modpackManager.importPack(result.filePaths[0], directory);
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('export-modpack', async (event, profileId) => {
+  try {
+    const profile = store.get('profiles', []).find(item => item.id === parseInt(profileId, 10));
+    if (!profile) return { success: false, error: 'Profil non trouvé' };
+    if (!profileManager) profileManager = new ProfileManager(getGameDir());
+    const result = await dialog.showSaveDialog({ defaultPath: `${profile.name}.zip`, filters: [{ name: 'Modpack ZIP', extensions: ['zip'] }] });
+    if (result.canceled) return { success: false, canceled: true };
+    return modpackManager.exportPack(profileManager.getDirectory(profile), result.filePath, profile);
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('validate-profile-compatibility', async (event, profile = {}) => {
+  if (!launcher) launcher = new MinecraftLauncher();
+  const requiredJava = launcher.getRequiredJavaMajor(profile.version);
+  const settings = store.get('settings', {});
+  const javaPath = settings.javaPath || 'java';
+  const javaMajor = await launcher.getJavaMajor(javaPath);
+  const issues = [];
+  if (!javaMajor) issues.push(`Java ${requiredJava}+ introuvable`);
+  else if (javaMajor < requiredJava) issues.push(`Java ${requiredJava}+ requis, Java ${javaMajor} détecté`);
+  if (!profile.version) issues.push('Version Minecraft absente');
+  if (!['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'].includes(String(profile.loader || 'vanilla').toLowerCase())) {
+    issues.push('Loader Minecraft inconnu');
+  }
+  const mods = loadModsDB();
+  const incompatibleMods = mods.filter(mod => {
+    const gameVersion = String(mod.gameVersion || '').toLowerCase();
+    const loader = String(mod.loader || '').toLowerCase();
+    return (gameVersion && gameVersion !== String(profile.version).toLowerCase()) || (loader && loader !== 'vanilla' && loader !== String(profile.loader || 'vanilla').toLowerCase());
+  }).map(mod => mod.name);
+  if (incompatibleMods.length) issues.push(`Mods incompatibles : ${incompatibleMods.join(', ')}`);
+  return { compatible: issues.length === 0, issues, requiredJava, detectedJava: javaMajor };
+});
+
+ipcMain.handle('get-favorite-servers', async () => store.get('favoriteServers', []));
+ipcMain.handle('save-favorite-server', async (event, server = {}) => {
+  const address = String(server.address || '').trim();
+  if (!address || !/^[a-z0-9.-]+(?::\d+)?$/i.test(address)) return { success: false, error: 'Adresse serveur invalide' };
+  const servers = store.get('favoriteServers', []).filter(item => item.address !== address);
+  servers.push({ address, name: String(server.name || address).trim().slice(0, 60), icon: server.icon || null, version: server.version || null });
+  store.set('favoriteServers', servers);
+  return { success: true, servers };
+});
+ipcMain.handle('remove-favorite-server', async (event, address) => {
+  const servers = store.get('favoriteServers', []).filter(item => item.address !== address);
+  store.set('favoriteServers', servers);
+  return { success: true, servers };
+});
+
 // ✅ HANDLER LANCER MINECRAFT AVEC VÉRIFICATION AUTH
 ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
   try {
@@ -2921,7 +3129,8 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     console.log('✅ Auth:', authData.type, '-', authData.username);
 
     const settings = store.get('settings', {});
-    const gameDir = getGameDir();
+    if (!profileManager) profileManager = new ProfileManager(getGameDir());
+    const gameDir = profileManager.ensureDirectories(profile || { id: 1 });
 
     // ✅ MARQUER COMME EN COURS
     minecraftRunning = true;
@@ -2948,6 +3157,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     try {
       // ✅ LANCER MINECRAFT
       console.log('🚀 Lancement en cours...');
+      const sessionStartTime = new Date();
 
       const sendLog = (type, message) => {
         try {
@@ -2981,6 +3191,23 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         } catch (_) {}
         console.log('🔧 Effective Java binary for launch:', effectiveJava);
       }
+
+      const requiredJava = launcher.getRequiredJavaMajor(profile?.version);
+      const detectedJava = await launcher.getJavaMajor(effectiveJava);
+      if (!detectedJava) {
+        minecraftRunning = false;
+        return {
+          success: false,
+          error: `Java ${requiredJava}+ est requis. Aucun Java valide n'a été trouvé.`
+        };
+      }
+      if (detectedJava < requiredJava) {
+        minecraftRunning = false;
+        return {
+          success: false,
+          error: `Java ${requiredJava}+ est requis, mais Java ${detectedJava} est configuré.`
+        };
+      }
       
       const normalizedProfiles = syncProfilesWithInstalledVersions(store.get('profiles', []));
       const linkedModdedProfile = findMatchingModdedProfile(
@@ -3003,6 +3230,20 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         console.log(`🧩 Profil modde detecte pour le lancement: ${linkedModdedProfile.name} (${effectiveProfile.loader})`);
       }
 
+      const incompatibleMods = loadModsDB().filter(mod => {
+        const gameVersion = String(mod.gameVersion || '').toLowerCase();
+        const modLoader = String(mod.loader || '').toLowerCase();
+        return (gameVersion && gameVersion !== String(effectiveProfile.version).toLowerCase())
+          || (modLoader && modLoader !== 'vanilla' && modLoader !== String(effectiveProfile.loader || 'vanilla').toLowerCase());
+      });
+      if (incompatibleMods.length) {
+        minecraftRunning = false;
+        return {
+          success: false,
+          error: `Mods incompatibles détectés : ${incompatibleMods.map(mod => mod.name).join(', ')}`
+        };
+      }
+
       const launchPromise = launcher.launch({
         authData: authData,
         version: effectiveProfile.version,
@@ -3019,6 +3260,13 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         },
         onClose: (code) => {
           try {
+            recordGameSession({
+              version: effectiveProfile.version,
+              server: serverIP || 'Solo',
+              username: authData.username,
+              startTime: sessionStartTime,
+              exitCode: code
+            });
             // Envoyer un signal au renderer pour indiquer que le jeu a fermé
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('game-closed', { code });
@@ -3239,11 +3487,18 @@ ipcMain.handle('update-friend-status', async (event, friendId, status) => {
 
 ipcMain.handle('check-friends-status', async () => {
   const friends = store.get('friends', []);
-  
-  const updatedFriends = friends.map(friend => ({
-    ...friend,
-    online: Math.random() > 0.5,
-    lastChecked: new Date().toISOString()
+
+  const updatedFriends = await Promise.all(friends.map(async friend => {
+    if (!friend.server) {
+      return { ...friend, online: null, lastChecked: new Date().toISOString() };
+    }
+    const status = await new Promise(resolve => {
+      const [host, portValue] = String(friend.server).split(':');
+      mc.ping({ host, port: parseInt(portValue, 10) || 25565 }, (error, result) => {
+        resolve({ online: !error, server: error ? null : result?.version?.name || friend.server });
+      });
+    });
+    return { ...friend, ...status, lastChecked: new Date().toISOString() };
   }));
   
   store.set('friends', updatedFriends);
@@ -3594,7 +3849,6 @@ ipcMain.handle('add-news', async (event, newsItem) => {
 // ✅ UPDATES - FONCTION POUR EXTRAIRE LA VERSION DU TAG (ou du nom) DE RELEASE
 function extractVersionFromReleaseName(release) {
   const source = String(release?.tag_name || release?.name || '').trim();
-  // Cherche un pattern comme "v3.1.57", "3.1.57" ou "v4.4.4"
   const versionRegex = /v?(\d+(?:\.\d+){1,3})/i;
   const match = source.match(versionRegex);
   return match ? match[1] : null;
@@ -5238,7 +5492,16 @@ ipcMain.on('close-window', () => {
 });
 
 ipcMain.on('open-external', (event, url) => {
-  require('electron').shell.openExternal(url);
+  try {
+    const parsed = new URL(String(url));
+    const allowedProtocols = ['https:', 'mailto:'];
+    const allowedHosts = ['github.com', 'discord.gg', 'discord.com', 'minecraft.net', 'www.minecraft.net'];
+    if (!allowedProtocols.includes(parsed.protocol)) return;
+    if (parsed.protocol === 'https:' && !allowedHosts.includes(parsed.hostname)) return;
+    require('electron').shell.openExternal(parsed.toString());
+  } catch (_) {
+    console.warn('URL externe refusée');
+  }
 });
 
 ipcMain.on('settings-window-ready', () => {
