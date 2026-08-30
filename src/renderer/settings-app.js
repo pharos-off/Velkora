@@ -999,6 +999,16 @@ function renderSettings() {
           </div>
 
           <div class="settings-card">
+            <h3>Santé du dossier de jeu</h3>
+            <p class="help-text">Vérifie l’état du dossier Minecraft et nettoie les éléments inutiles.</p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+              <button id="game-health-btn" class="btn-secondary">Vérifier l’intégrité</button>
+              <button id="repair-game-health-btn" class="btn-secondary">Réparer</button>
+            </div>
+            <pre id="game-health-output" style="display: none; margin-top: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; color: #d1d5db;"></pre>
+          </div>
+
+          <div class="settings-card">
             <h3>Diagnostic</h3>
             <p class="help-text">Génère un rapport système pour faciliter le dépannage.</p>
             <button id="diagnostics-btn" class="btn-secondary">Générer le rapport</button>
@@ -2029,6 +2039,55 @@ function renderSettings() {
     if (result.success) refreshBackups();
   });
   document.getElementById('list-backups-btn')?.addEventListener('click', refreshBackups);
+
+  const renderHealthReport = (result, outputId = 'game-health-output') => {
+    const output = document.getElementById(outputId);
+    if (!output) return;
+
+    output.style.display = 'block';
+    if (!result || !result.success) {
+      output.textContent = `Erreur : ${result?.error || 'Impossible de vérifier l\'état du jeu.'}`;
+      return;
+    }
+
+    const healthyText = result.healthy ? 'SANTÉ OK' : 'ATTENTION';
+    const lines = [
+      `${healthyText} • Score: ${result.score}/100`,
+      `Dossier: ${result.gameDir || 'Inconnu'}`,
+      `Généré le: ${result.generatedAt || 'Inconnu'}`,
+      '',
+      `Stats: ${JSON.stringify(result.stats || {}, null, 2)}`,
+      '',
+      'Problèmes :' + (result.issues.length ? `\n${result.issues.map(issue => `- [${issue.severity}] ${issue.message}`).join('\n')}` : ' Aucune.')
+    ];
+
+    output.textContent = lines.join('\n');
+  };
+
+  document.getElementById('game-health-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('check-game-health');
+    renderHealthReport(result, 'game-health-output');
+  });
+
+  document.getElementById('repair-game-health-btn')?.addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('repair-game-health');
+    if (result.success) {
+      const output = document.getElementById('game-health-output');
+      if (output) {
+        output.style.display = 'block';
+        output.textContent = `${result.message}\n\n${JSON.stringify(result.repaired, null, 2)}`;
+      }
+      const refresh = await ipcRenderer.invoke('check-game-health');
+      renderHealthReport(refresh, 'game-health-output');
+      return;
+    }
+
+    const output = document.getElementById('game-health-output');
+    if (output) {
+      output.style.display = 'block';
+      output.textContent = `Erreur de réparation : ${result.error}`;
+    }
+  });
 
   document.getElementById('diagnostics-btn')?.addEventListener('click', async () => {
     const output = document.getElementById('diagnostics-output');

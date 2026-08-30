@@ -280,6 +280,14 @@ class CraftLauncherApp {
     } catch (e) { return 0; }
   }
 
+  getCurrentTotalPlaytimeMs() {
+    const stored = this.getTotalPlaytimeMs();
+    const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
+    const now = Date.now();
+    const runningDelta = start && start < now ? (now - start) : 0;
+    return stored + runningDelta;
+  }
+
   setTotalPlaytimeMs(ms) {
     try { localStorage.setItem('velkora_total_playtime_ms', String(Math.max(0, Math.floor(ms)))); } catch (e) {}
   }
@@ -316,26 +324,28 @@ class CraftLauncherApp {
 
   updatePlaytimeDisplay() {
     try {
-      const el = document.getElementById('total-playtime-value');
-      const stored = this.getTotalPlaytimeMs();
-      const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
-      const now = Date.now();
-      const runningDelta = start && start < now ? (now - start) : 0;
-      const total = stored + runningDelta;
-      if (el) el.textContent = this.formatDuration(total);
+      const total = this.getCurrentTotalPlaytimeMs();
+      const text = this.formatDuration(total);
+
+      const ids = ['total-playtime-value', 'stats-total-playtime'];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
     } catch (e) {}
   }
 
   // --- Stats view auto-update ---
   updateStatsView() {
     try {
-      // Total playtime (cumule stored + running)
-      const stored = this.getTotalPlaytimeMs();
-      const start = Number(localStorage.getItem('velkora_game_start_ts') || '0') || 0;
-      const running = start && start < Date.now() ? (Date.now() - start) : 0;
-      const total = stored + running;
+      const total = this.getCurrentTotalPlaytimeMs();
+      const displayText = this.formatDuration(total);
+
       const elTotal = document.getElementById('stats-total-playtime');
-      if (elTotal) elTotal.textContent = this.formatDuration(total);
+      if (elTotal) elTotal.textContent = displayText;
+
+      const elTotalAlt = document.getElementById('total-playtime-value');
+      if (elTotalAlt) elTotalAlt.textContent = displayText;
 
       const elLast = document.getElementById('stats-last-played');
       if (elLast) elLast.textContent = this.selectedProfile?.lastPlayed || 'Jamais';
@@ -352,6 +362,40 @@ class CraftLauncherApp {
     if (this._statsInterval) return;
     this.updateStatsView();
     this._statsInterval = setInterval(() => this.updateStatsView(), 1000);
+  }
+
+  getFavoriteServers() {
+    try {
+      const saved = localStorage.getItem('velkora_favorite_servers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length) return parsed.slice(0, 5);
+      }
+    } catch (_) {}
+
+    return [
+      { name: 'Hypixel', address: 'mc.hypixel.net' },
+      { name: 'CubeCraft', address: 'play.cubecraft.net' },
+      { name: 'Minehut', address: 'play.minehut.com' }
+    ];
+  }
+
+  getProfileHighlights() {
+    const profiles = Array.isArray(this.profiles) ? this.profiles : [];
+    if (!profiles.length) {
+      return [{
+        name: 'Principal',
+        version: this.selectedProfile?.version || '1.21',
+        loader: this.selectedProfile?.loader || 'vanilla'
+      }];
+    }
+
+    return profiles.slice(0, 3).map(profile => ({
+      id: profile.id,
+      name: profile.name || 'Profil',
+      version: profile.version || '1.21',
+      loader: profile.loader || 'vanilla'
+    }));
   }
 
   stopStatsAutoUpdate() {
@@ -634,7 +678,16 @@ class CraftLauncherApp {
   }
 
   setupEventListeners() {
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', async (e) => {
+      const homeProfilesBtn = e.target.closest('#home-profiles-btn');
+
+      if (homeProfilesBtn) {
+        this.currentView = 'mods';
+        this.modsManager?.setCurrentCategory('mods');
+        await this.render();
+        return;
+      }
+
       // ✅ Boutons titlebar - utiliser .closest() pour gérer les clics sur les SVG enfants
       const minimizeBtn = e.target.closest('#minimize-btn');
       const maximizeBtn = e.target.closest('#maximize-btn');
@@ -912,6 +965,8 @@ class CraftLauncherApp {
       
       // ✅ Mettre à jour la dernière vue rendue
       this.lastRenderedView = this.currentView;
+      this.updatePlaytimeDisplay();
+      this.updateStatsView();
       
       // ✅ Après le premier rendu, toujours afficher le loading screen pour les changements
       this.isFirstContentRender = false;
@@ -1838,6 +1893,8 @@ renderMainLayout() {
     const loaderHint = activeLaunchLoader === 'vanilla'
       ? 'Minecraft se lancera sans loader.'
       : `Minecraft se lancera avec ${this.formatLoaderLabel(activeLaunchLoader)}.`;
+    const profileHighlights = this.getProfileHighlights();
+    const favoriteServers = this.getFavoriteServers();
     
     const networkBanner = this.networkOnline === false ? `
       <div class="network-status-banner offline">
@@ -1965,7 +2022,47 @@ renderMainLayout() {
             </div>
             <div class="stat-row">
               <span class="stat-label">Temps de jeu total</span>
-                <span class="stat-value" id="total-playtime-value">N/A</span>
+              <div id="stats-total-playtime" style="font-size:14px; font-weight:700; color:#e2e8f0; margin-top:6px; letter-spacing:0.02em;">0s</div>
+            </div>
+          </div>
+
+          <div class="info-card profile-manager-card">
+            <div class="card-header">
+              <span class="card-icon">${icons.user}</span>
+              <h3>Gestionnaire de profils premium</h3>
+            </div>
+            <div class="profile-stack">
+              ${profileHighlights.map((profile, index) => {
+                const isActive = this.selectedProfile && this.selectedProfile.id === profile.id;
+                return `
+                  <div class="profile-mini-item ${isActive ? 'active' : ''}" data-profile-id="${profile.id ?? ''}">
+                    <div>
+                      <strong>${this.escapeHtml(profile.name)}</strong>
+                      <small>${this.escapeHtml(profile.version)} • ${this.formatLoaderLabel(profile.loader)}</small>
+                    </div>
+                    <span>${isActive ? 'Actif' : 'Prêt'}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <button class="mini-panel-btn" id="home-profiles-btn">Gérer les profils</button>
+          </div>
+
+          <div class="info-card favorites-card">
+            <div class="card-header">
+              <span class="card-icon">${icons.star}</span>
+              <h3>Serveurs favoris</h3>
+            </div>
+            <div class="favorite-server-list">
+              ${favoriteServers.map(server => `
+                <div class="favorite-server-row">
+                  <div>
+                    <strong>${this.escapeHtml(server.name || server.address)}</strong>
+                    <small>${this.escapeHtml(server.address || 'Serveur')}</small>
+                  </div>
+                  <button class="join-fav-btn" data-join-server="${this.escapeHtml(server.address || '')}">Jouer</button>
+                </div>
+              `).join('')}
             </div>
           </div>
 
@@ -1988,49 +2085,6 @@ renderMainLayout() {
                 <span style="font-size: 14px;">${icons.folder}</span>
                 <span>Dossier</span>
               </button>
-            </div>
-          </div>
-
-          <!-- Serveurs Suggérés -->
-          <div class="info-card servers-card">
-            <div class="card-header">
-              <span class="card-icon">${icons.globe}</span>
-              <h3>Serveurs populaires</h3>
-            </div>
-            <div class="server-list" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
-              <div class="server-item" data-server="mc.hypixel.net">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">Hypixel</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="mc.hypixel.net">Rejoindre</button>
-              </div>
-              <div class="server-item" data-server="play.cubecraft.net">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">CubeCraft</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.cubecraft.net">Rejoindre</button>
-              </div>
-              </div>
-              <div class="server-item" data-server="play.blocksmc.com">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">BlocksMC</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.blocksmc.com">Rejoindre</button>
-              </div>
-              <div class="server-item" data-server="play.minehut.com">
-                <div class="server-dot online"></div>
-                <div class="server-info">
-                  <div class="server-name">Minehut</div>
-                  <div class="server-players">Vérification...</div>
-                </div>
-                <button class="server-join-btn" data-join-quick="play.minehut.com">Rejoindre</button>
-              </div>
             </div>
           </div>
         </div>
@@ -2399,6 +2453,105 @@ renderMainLayout() {
         .quick-actions {
           display: grid;
           gap: 8px;
+        }
+
+        .profile-stack {
+          display: grid;
+          gap: 10px;
+          margin-top: 6px;
+        }
+
+        .profile-mini-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(99, 102, 241, 0.08);
+          border: 1px solid rgba(99, 102, 241, 0.12);
+          transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+          cursor: pointer;
+        }
+
+        .profile-mini-item:hover {
+          transform: translateY(-1px);
+          border-color: rgba(99, 102, 241, 0.3);
+          background: rgba(99, 102, 241, 0.12);
+          box-shadow: 0 6px 18px rgba(99, 102, 241, 0.15);
+        }
+
+        .profile-mini-item.active {
+          background: rgba(99, 102, 241, 0.16);
+          border-color: rgba(99, 102, 241, 0.35);
+        }
+
+        .profile-mini-item strong {
+          display: block;
+          color: #e2e8f0;
+          font-size: 13px;
+        }
+
+        .profile-mini-item small {
+          color: #94a3b8;
+          font-size: 11px;
+        }
+
+        .profile-mini-item span {
+          font-size: 11px;
+          color: #86efac;
+          font-weight: 700;
+        }
+
+        .mini-panel-btn {
+          width: 100%;
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(99, 102, 241, 0.12);
+          color: #e2e8f0;
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .favorite-server-list {
+          display: grid;
+          gap: 8px;
+        }
+
+        .favorite-server-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(15, 23, 42, 0.5);
+          border: 1px solid rgba(99, 102, 241, 0.08);
+        }
+
+        .favorite-server-row strong {
+          display: block;
+          font-size: 12px;
+          color: #e2e8f0;
+        }
+
+        .favorite-server-row small {
+          display: block;
+          color: #94a3b8;
+          font-size: 10px;
+        }
+
+        .join-fav-btn {
+          padding: 6px 10px;
+          border: none;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          cursor: pointer;
         }
 
         .quick-action-btn {
@@ -3910,6 +4063,43 @@ renderMainLayout() {
       });
     }
 
+    // ✅ GESTION DES PROFILS DEPUIS L'ACCUEIL
+    const selectProfileFromHome = async (profileId) => {
+      const targetProfile = this.profiles?.find(profile => Number(profile.id) === Number(profileId));
+      if (!targetProfile) return;
+
+      this.selectedProfile = targetProfile;
+      if (this.modsManager) {
+        this.modsManager.selectedModProfileId = targetProfile.id;
+      }
+
+      if (this.currentView === 'main') {
+        this.renderContentAsync(true);
+        return;
+      }
+
+      this.currentView = 'main';
+      this.render();
+    };
+
+    const homeProfilesBtn = document.getElementById('home-profiles-btn');
+    if (homeProfilesBtn) {
+      homeProfilesBtn.addEventListener('click', async () => {
+        this.currentView = 'mods';
+        this.modsManager?.setCurrentCategory('mods');
+        await this.render();
+      });
+    }
+
+    document.querySelectorAll('.profile-mini-item[data-profile-id]').forEach((row) => {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', async () => {
+        const profileId = row.getAttribute('data-profile-id');
+        if (!profileId) return;
+        await selectProfileFromHome(profileId);
+      });
+    });
+
     // ✅ BOUTON DISCORD
     const homeDiscordBtn = document.getElementById('home-discord-btn');
     if (homeDiscordBtn) {
@@ -3936,7 +4126,6 @@ renderMainLayout() {
       });
     });
     
-    // Serveurs populaires cliquables (ligne entière)
     document.querySelectorAll('.server-item[data-server]').forEach(item => {
       item.style.cursor = 'pointer';
       item.addEventListener('click', async (e) => {

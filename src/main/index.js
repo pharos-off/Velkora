@@ -126,8 +126,8 @@ async function waitForInternet(timeoutMs = 15000, intervalMs = 2500) {
   return false;
 }
 
-const LAUNCHER_VERSION = '4.5.0';
-const LAUNCHER_BUILD = '20260828';
+const LAUNCHER_VERSION = '4.6.0';
+const LAUNCHER_BUILD = '20260830';
 const LAUNCHER_NAME = 'Velkora Client';
 function getAssetPath(...segments) {
   if (app.isPackaged) {
@@ -2831,6 +2831,211 @@ ipcMain.handle('get-diagnostics', async () => {
     };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+function countFilesRecursively(targetPath) {
+  if (!targetPath || !fs.existsSync(targetPath)) return 0;
+
+  let count = 0;
+  const stack = [targetPath];
+
+  while (stack.length) {
+    const current = stack.pop();
+    try {
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+        } else {
+          count += 1;
+        }
+      }
+    } catch (_) {
+      // Ignorer les dossiers inaccessibles.
+    }
+  }
+
+  return count;
+}
+
+ipcMain.handle('check-game-health', async () => {
+  try {
+    const gameDir = getGameDir();
+    const requiredDirectories = [
+      gameDir,
+      path.join(gameDir, 'versions'),
+      path.join(gameDir, 'mods'),
+      path.join(gameDir, 'resourcepacks'),
+      path.join(gameDir, 'shaderpacks'),
+      path.join(gameDir, 'logs'),
+      path.join(gameDir, 'crash-reports')
+    ];
+
+    const issues = [];
+    const stats = {
+      gameDirExists: fs.existsSync(gameDir),
+      versions: 0,
+      mods: 0,
+      resourcePacks: 0,
+      shaders: 0,
+      logs: 0,
+      crashReports: 0
+    };
+
+    for (const dir of requiredDirectories) {
+      const exists = fs.existsSync(dir);
+      if (!exists) {
+        issues.push({
+          type: 'missing-directory',
+          severity: 'warning',
+          path: dir,
+          message: 'Dossier absent, il sera recréé lors de la réparation.'
+        });
+      }
+    }
+
+    if (fs.existsSync(gameDir)) {
+      stats.versions = countFilesRecursively(path.join(gameDir, 'versions'));
+      stats.mods = countFilesRecursively(path.join(gameDir, 'mods'));
+      stats.resourcePacks = countFilesRecursively(path.join(gameDir, 'resourcepacks'));
+      stats.shaders = countFilesRecursively(path.join(gameDir, 'shaderpacks'));
+      stats.logs = countFilesRecursively(path.join(gameDir, 'logs'));
+      stats.crashReports = countFilesRecursively(path.join(gameDir, 'crash-reports'));
+
+      if (stats.logs > 50) {
+        issues.push({
+          type: 'log-bloat',
+          severity: 'warning',
+          path: path.join(gameDir, 'logs'),
+          message: 'Le dossier logs est volumineux, un nettoyage est recommandé.'
+        });
+      }
+
+      if (stats.crashReports > 10) {
+        issues.push({
+          type: 'crash-reports',
+          severity: 'info',
+          path: path.join(gameDir, 'crash-reports'),
+          message: 'Plusieurs rapports de crash sont présents.'
+        });
+      }
+
+      const lastModifiedFiles = [];
+      for (const candidate of [
+        path.join(gameDir, 'logs'),
+        path.join(gameDir, 'crash-reports'),
+        path.join(gameDir, 'mods')
+      ]) {
+        if (!fs.existsSync(candidate)) continue;
+
+        try {
+          const entries = fs.readdirSync(candidate, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(candidate, entry.name);
+            if (!entry.isFile()) continue;
+            const stat = fs.statSync(full);
+            lastModifiedFiles.push({ name: entry.name, mtime: stat.mtimeMs, path: full });
+          }
+        } catch (_) {}
+      }
+
+      const staleFiles = lastModifiedFiles.filter(file => Date.now() - file.mtime > 1000 * 60 * 60 * 24 * 30);
+      if (staleFiles.length > 0) {
+        issues.push({
+          type: 'stale-files',
+          severity: 'info',
+          path: gameDir,
+          message: `${staleFiles.length} fichier(s) ancien(s) détecté(s) dans le dossier de jeu.`
+        });
+      }
+    }
+
+    const score = Math.max(0, 100 - (issues.length * 12));
+    return {
+      success: true,
+      healthy: issues.length === 0,
+      score,
+      issues,
+      stats,
+      generatedAt: new Date().toISOString(),
+      gameDir
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      healthy: false,
+      score: 0,
+      issues: [],
+      stats: {}
+    };
+  }
+});
+
+ipcMain.handle('repair-game-health', async () => {
+  try {
+    const gameDir = getGameDir();
+    const repaired = [];
+    const directories = [
+      gameDir,
+      path.join(gameDir, 'versions'),
+      path.join(gameDir, 'mods'),
+      path.join(gameDir, 'resourcepacks'),
+      path.join(gameDir, 'shaderpacks'),
+      path.join(gameDir, 'logs'),
+      path.join(gameDir, 'crash-reports'),
+      path.join(gameDir, 'saves')
+    ];
+
+    for (const dir of directories) {
+      try {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+          repaired.push({ type: 'created-directory', path: dir });
+        }
+      } catch (error) {
+        repaired.push({ type: 'failed-directory', path: dir, error: error.message });
+      }
+    }
+
+    const cleanupTargets = [
+      path.join(gameDir, 'logs'),
+      path.join(gameDir, 'crash-reports')
+    ];
+
+    for (const target of cleanupTargets) {
+      if (!fs.existsSync(target)) continue;
+      try {
+        const entries = fs.readdirSync(target, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          const fullPath = path.join(target, entry.name);
+          const stat = fs.statSync(fullPath);
+          if (stat.size > 5 * 1024 * 1024) {
+            fs.unlinkSync(fullPath);
+            repaired.push({ type: 'removed-large-file', path: fullPath });
+          }
+        }
+      } catch (error) {
+        repaired.push({ type: 'cleanup-failed', path: target, error: error.message });
+      }
+    }
+
+    return {
+      success: true,
+      repaired,
+      message: repaired.length > 0 ? 'Nettoyage et réparation effectués.' : 'Aucune action nécessaire.',
+      gameDir
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      repaired: [],
+      gameDir: getGameDir()
+    };
   }
 });
 
