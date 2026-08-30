@@ -4,7 +4,7 @@
 
 ### Un launcher Minecraft moderne, rapide et pensé pour offrir la meilleure expérience de jeu possible.
 
-[![Version](https://img.shields.io/badge/version-4.5.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.6.0-blue)]()
 [![Platform](https://img.shields.io/badge/platform-Windows-red)]()
 [![License](https://img.shields.io/badge/license-VCv1-green)]()
 
