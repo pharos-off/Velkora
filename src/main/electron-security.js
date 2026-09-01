@@ -6,9 +6,11 @@
  */
 
 const { session, ipcMain, shell } = require('electron');
+const UrlGuard = require('./url-guard');
 
 class ElectronSecurity {
   constructor() {
+    this.urlGuard = new UrlGuard();
     this.cspHeader = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
@@ -173,6 +175,15 @@ class ElectronSecurity {
         console.warn(`⚠️ Redirection HTTP vers HTTPS: ${url}`);
         callback({ redirectURL: url.replace('http://', 'https://') });
         return;
+      }
+
+      if (url.startsWith('http:') || url.startsWith('https:')) {
+        const safeUrl = this.urlGuard.sanitize(url);
+        if (!safeUrl) {
+          console.warn(`🚫 URL non autorisée bloquée: ${url}`);
+          callback({ cancel: true });
+          return;
+        }
       }
 
       callback({});

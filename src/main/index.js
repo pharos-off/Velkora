@@ -1,7 +1,11 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, session, nativeImage } = require('electron');
 const path = require('path');
-const Store = require('electron-store').default || require('electron-store');
 const { spawn } = require("child_process");
+const SecureStore = require('./secure-store');
+const FirstRunWizard = require('./first-run-wizard');
+const UpdateChecker = require('./update-checker');
+const UrlGuard = require('./url-guard');
+const RuntimeDiagnostics = require('./runtime-diagnostics');
 const MinecraftLauncher = require('./minecraft-launcher');
 const MicrosoftAuth = require('./microsoft-auth');
 const DiscordPresence = require('./discord-rpc');
@@ -126,8 +130,8 @@ async function waitForInternet(timeoutMs = 15000, intervalMs = 2500) {
   return false;
 }
 
-const LAUNCHER_VERSION = '4.6.0';
-const LAUNCHER_BUILD = '20260830';
+const LAUNCHER_VERSION = '4.7.0';
+const LAUNCHER_BUILD = '20260901';
 const LAUNCHER_NAME = 'Velkora Client';
 function getAssetPath(...segments) {
   if (app.isPackaged) {
@@ -317,25 +321,17 @@ const originalSpawn = childProcess.spawn;
 
 // (No global child_process wrappers — keep defaults)
 
-const store = new Store();
-console.log('📋 [INIT] Electron Store path:', store.path);
-const rawStoreGet = store.get.bind(store);
-const rawStoreSet = store.set.bind(store);
-const rawStoreDelete = store.delete.bind(store);
-store.get = (key, defaultValue) => {
-  if (key !== 'authData') return rawStoreGet(key, defaultValue);
-  const stored = rawStoreGet(key, defaultValue);
-  if (!stored || !stored.iv || !stored.data || !stored.authTag) return stored;
-  return SecurityManager.decrypt(stored);
-};
-store.set = (key, value) => {
-  if (key === 'authData') return SecurityManager.storeAuthData(value);
-  return rawStoreSet(key, value);
-};
-store.delete = (key) => {
-  if (key === 'authData') return SecurityManager.clearAuthData();
-  return rawStoreDelete(key);
-};
+const secureStore = new SecureStore();
+const firstRunWizard = new FirstRunWizard(secureStore);
+const urlGuard = new UrlGuard();
+const runtimeDiagnostics = new RuntimeDiagnostics(__dirname);
+const store = secureStore;
+console.log('📋 [INIT] Electron Store path:', store.store.path || 'secure-store');
+store.ensureDefaults();
+const wizardStatus = firstRunWizard.ensureWizardCompleted();
+if (wizardStatus.run) {
+  console.log('🧭 [Wizard] First-run configuration wizard enabled');
+}
 let mainWindow;
 let loadingWindow = null;
 let settingsWindow = null;
@@ -497,8 +493,10 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\/(?:www\.)?(?:github\.com|discord\.gg|discord\.com|minecraft\.net)\//i.test(url)) {
-      shell.openExternal(url);
+    const safeUrl = urlGuard.sanitize(url);
+    if (safeUrl) {
+      shell.openExternal(safeUrl);
+      return { action: 'deny' };
     }
     return { action: 'deny' };
   });
@@ -2827,8 +2825,35 @@ ipcMain.handle('get-diagnostics', async () => {
       cpu: { brand: cpu.brand, cores: cpu.cores, speed: cpu.speed },
       memory: { total: mem.total, free: mem.available },
       os: { platform: osInfo.platform, distro: osInfo.distro, release: osInfo.release },
-      disks: disk.map(item => ({ mount: item.mount, size: item.size, used: item.used, available: item.available }))
+      disks: disk.map(item => ({ mount: item.mount, size: item.size, used: item.used, available: item.available })),
+      runtime: runtimeDiagnostics.collect()
     };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-runtime-diagnostics', async () => ({
+  success: true,
+  data: runtimeDiagnostics.collect()
+}));
+
+ipcMain.handle('get-first-run-status', async () => ({
+  success: true,
+  completed: !!store.get('settings', {}).firstRunWizardCompleted,
+  run: !store.get('settings', {}).firstRunWizardCompleted
+}));
+
+ipcMain.handle('complete-first-run', async () => {
+  try {
+    const settings = store.get('settings', {});
+    const updated = {
+      ...settings,
+      firstRunWizardCompleted: true,
+      firstRunWizardSeenAt: new Date().toISOString()
+    };
+    store.set('settings', updated);
+    return { success: true, completed: true };
   } catch (error) {
     return { success: false, error: error.message };
   }

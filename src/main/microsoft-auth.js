@@ -347,6 +347,33 @@ class MicrosoftAuth {
     return this.authPromise;
   }
 
+  normalizeAuthData(authData) {
+    if (!authData || typeof authData !== 'object') return null;
+
+    return {
+      type: authData.type || 'microsoft',
+      username: String(authData.username || '').trim(),
+      uuid: String(authData.uuid || '').trim(),
+      accessToken: String(authData.accessToken || '').trim(),
+      refreshToken: String(authData.refreshToken || '').trim(),
+      expiresAt: Number(authData.expiresAt || Date.now() + 86400000),
+      clientToken: String(authData.clientToken || crypto.randomUUID()),
+      profile: authData.profile || null,
+      connectedAt: authData.connectedAt || new Date().toISOString(),
+      email: authData.email || null
+    };
+  }
+
+  clearAuthSession() {
+    try {
+      this.store.delete('authData');
+    } catch (_) {}
+    this.tokenCache = null;
+    this.authInProgress = false;
+    this.authPromise = null;
+    this.authWindow = null;
+  }
+
   async completeAuthFlow(code) {
     try {
       console.log('📋 Step 1: Exchanging code for tokens...');
@@ -393,18 +420,21 @@ class MicrosoftAuth {
       const existing = this.store.get('authData') || {};
       const clientToken = existing.clientToken || crypto.randomUUID();
 
-      const authData = {
+      const authData = this.normalizeAuthData({
         type: 'microsoft',
         username: profile.name,
-        uuid: profile.id, // 32 chars sans tirets (normal via API)
-        accessToken: mc.access_token, // ✅ token Minecraft services
+        uuid: profile.id,
+        accessToken: mc.access_token,
         refreshToken: tokens.refresh_token,
-        // ✅ expiration du token Minecraft (fallback 24h si expires_in manquant)
         expiresAt: Date.now() + ((mc.expires_in || 24 * 3600) * 1000),
-        clientToken, // ✅ stable
+        clientToken,
         profile: profile,
         connectedAt: new Date().toISOString()
-      };
+      });
+
+      if (!authData || !authData.username || !authData.uuid || !authData.accessToken) {
+        return { success: false, error: 'Payload Microsoft invalide après normalisation' };
+      }
 
       console.log('💾 [completeAuthFlow] SAVING authData to store:');
       console.log('   - username:', authData.username);
@@ -484,11 +514,11 @@ class MicrosoftAuth {
    */
   async refreshAccessToken() {
     try {
-      const authData = this.store.get('authData');
+      const authData = this.normalizeAuthData(this.store.get('authData'));
 
       if (!authData?.refreshToken) {
         console.error('❌ Pas de refresh token disponible');
-        this.store.delete('authData');
+        this.clearAuthSession();
         return null;
       }
 
@@ -517,7 +547,7 @@ class MicrosoftAuth {
         console.error('❌ Refresh failed:', data.error, data.error_description || '');
         const invalidGrant = ['invalid_grant', 'invalid_request', 'invalid_token', 'interaction_required'];
         if (data.error && invalidGrant.includes(data.error)) {
-          this.store.delete('authData');
+          this.clearAuthSession();
         }
         return null;
       }
@@ -542,15 +572,20 @@ class MicrosoftAuth {
       }
 
       // ✅ METTRE À JOUR LES DONNÉES
-      authData.accessToken = mc.access_token;
-      authData.refreshToken = data.refresh_token || authData.refreshToken;
-      authData.expiresAt = Date.now() + ((mc.expires_in || 24 * 3600) * 1000);  // Fallback 24h
+      const refreshedAuthData = this.normalizeAuthData({
+        ...authData,
+        accessToken: mc.access_token,
+        refreshToken: data.refresh_token || authData.refreshToken,
+        expiresAt: Date.now() + ((mc.expires_in || 24 * 3600) * 1000),
+        clientToken: authData.clientToken || crypto.randomUUID()
+      });
 
-      // clientToken stable
-      if (!authData.clientToken) authData.clientToken = crypto.randomUUID();
+      if (!refreshedAuthData || !refreshedAuthData.accessToken) {
+        return null;
+      }
 
-      this.store.set('authData', authData);
-      this.tokenCache = authData;
+      this.store.set('authData', refreshedAuthData);
+      this.tokenCache = refreshedAuthData;
 
       console.log('✅ Token refreshed successfully');
       return mc.access_token;
@@ -565,33 +600,34 @@ class MicrosoftAuth {
    * ✅ VÉRIFIER ET RAFRAÎCHIR SI NÉCESSAIRE
    */
   async ensureValidToken() {
-    const authData = this.store.get('authData');
+    const authData = this.normalizeAuthData(this.store.get('authData'));
 
     if (!authData) {
       console.warn('⚠️ No authentication data');
+      this.clearAuthSession();
       return null;
     }
 
     const now = Date.now();
     const expiresAt = authData.expiresAt || 0;
-    const isExpired = expiresAt && now >= expiresAt;
-    const isNearExpiry = expiresAt && (expiresAt - now <= 5 * 60 * 1000);
+    const isExpired = !!expiresAt && now >= expiresAt;
+    const isNearExpiry = !!expiresAt && (expiresAt - now <= 5 * 60 * 1000);
 
-    // Si le token a expiré, on doit tenter un refresh.
     if (!authData.accessToken || isExpired || isNearExpiry) {
       console.log('⏰ Token expiration approaching / token manquant, refreshing...');
       const refreshed = await this.refreshAccessToken();
       if (refreshed) {
-        this.tokenCache = this.store.get('authData');
+        const nextAuthData = this.normalizeAuthData(this.store.get('authData'));
+        this.tokenCache = nextAuthData;
         return refreshed;
       }
 
-      // Si le refresh échoue mais que le token actuel est encore valide, on l'utilise.
       if (authData.accessToken && !isExpired) {
         console.warn('⚠️ Refresh failed but current token is still valid, keeping existing session');
         return authData.accessToken;
       }
 
+      this.clearAuthSession();
       return null;
     }
 

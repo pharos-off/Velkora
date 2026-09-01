@@ -14,8 +14,9 @@ const INVOKE_ALLOWED = [
   'delete-mod','delete-resourcepack','delete-shader','login-microsoft','check-online','get-versions','get-game-directory','get-installed-versions',
   'rename-profile','get-game-sessions','backup-init','backup-create','backup-restore','backup-list','backup-delete','backup-get-stats',
   'jvm-optimize','jvm-get-report','list-resource-packs','install-resource-pack','delete-resource-pack','monitor-start','monitor-stop','monitor-get-stats',
-  'get-discord-status','reconnect-discord-rpc','export-profile','import-profile','get-diagnostics','install-java','import-modpack','export-modpack',
-  'validate-profile-compatibility','get-favorite-servers','save-favorite-server','remove-favorite-server'
+  'get-discord-status','reconnect-discord-rpc','export-profile','import-profile','get-diagnostics','get-runtime-diagnostics','install-java','import-modpack','export-modpack',
+  'validate-profile-compatibility','get-favorite-servers','save-favorite-server','remove-favorite-server',
+  'get-first-run-status','complete-first-run'
 ];
 
 const SEND_ALLOWED = [
@@ -38,6 +39,11 @@ function safeInvoke(channel, ...args) {
     console.warn('[preload] invoke blocked for channel:', channel);
     return Promise.reject(new Error('Canal non autorisé'));
   }
+
+  if (args.some(arg => typeof arg === 'string' && arg.length > 50000)) {
+    return Promise.reject(new Error('Payload trop volumineux'));
+  }
+
   return ipcRenderer.invoke(channel, ...args);
 }
 
@@ -46,6 +52,12 @@ function safeSend(channel, ...args) {
     console.warn('[preload] send blocked for channel:', channel);
     return;
   }
+
+  if (args.some(arg => typeof arg === 'string' && arg.length > 50000)) {
+    console.warn('[preload] oversize send payload blocked for channel:', channel);
+    return;
+  }
+
   return ipcRenderer.send(channel, ...args);
 }
 
@@ -54,6 +66,11 @@ function safeOn(channel, listener) {
     console.warn('[preload] on blocked for channel:', channel);
     return;
   }
+
+  if (typeof listener !== 'function') {
+    return;
+  }
+
   const wrapped = (event, ...args) => {
     try { listener({}, ...args); } catch (e) { console.error(e); }
   };
